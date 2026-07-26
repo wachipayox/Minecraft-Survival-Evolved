@@ -10,8 +10,9 @@ import java.util.WeakHashMap;
 
 public final class DinosaurProceduralAnimator {
     private static final double MAX_SMOOTHING_GAP_TICKS = 5.0;
+    private static final float MODEL_UNITS_PER_BLOCK = 16.0F;
 
-    private final Map<PrototypeDinosaurEntity, SmoothedAngles> smoothedAngles = new WeakHashMap<>();
+    private final Map<PrototypeDinosaurEntity, SmoothedPose> smoothedPoses = new WeakHashMap<>();
 
     public DinosaurProceduralPose smooth(
             PrototypeDinosaurEntity entity,
@@ -19,25 +20,40 @@ public final class DinosaurProceduralAnimator {
             DinosaurProceduralConfig config,
             float partialTick) {
         double renderTime = entity.level().getGameTime() + partialTick;
-        SmoothedAngles previous = this.smoothedAngles.get(entity);
+        SmoothedPose previous = this.smoothedPoses.get(entity);
         if (previous == null
                 || renderTime < previous.renderTime()
                 || renderTime - previous.renderTime() > MAX_SMOOTHING_GAP_TICKS) {
-            SmoothedAngles initial =
-                    new SmoothedAngles(target.targetPitchRadians(), target.targetRollRadians(), renderTime);
-            this.smoothedAngles.put(entity, initial);
-            return target.withSmoothedAngles(initial.pitch(), initial.roll());
+            SmoothedPose initial = new SmoothedPose(
+                    target.targetPitchRadians(),
+                    target.targetRollRadians(),
+                    target.targetBodyTranslationYBlocks(),
+                    renderTime);
+            this.smoothedPoses.put(entity, initial);
+            return target.withSmoothedValues(
+                    initial.pitch(),
+                    initial.roll(),
+                    initial.bodyTranslationY());
         }
         if (renderTime == previous.renderTime()) {
-            return target.withSmoothedAngles(previous.pitch(), previous.roll());
+            return target.withSmoothedValues(
+                    previous.pitch(),
+                    previous.roll(),
+                    previous.bodyTranslationY());
         }
 
         double elapsedSeconds = (renderTime - previous.renderTime()) / 20.0;
         float alpha = (float) (1.0 - Math.exp(-config.smoothingResponsePerSecond() * elapsedSeconds));
         float pitch = lerp(previous.pitch(), target.targetPitchRadians(), alpha);
         float roll = lerp(previous.roll(), target.targetRollRadians(), alpha);
-        this.smoothedAngles.put(entity, new SmoothedAngles(pitch, roll, renderTime));
-        return target.withSmoothedAngles(pitch, roll);
+        float bodyTranslationY = lerp(
+                previous.bodyTranslationY(),
+                target.targetBodyTranslationYBlocks(),
+                alpha);
+        this.smoothedPoses.put(
+                entity,
+                new SmoothedPose(pitch, roll, bodyTranslationY, renderTime));
+        return target.withSmoothedValues(pitch, roll, bodyTranslationY);
     }
 
     public void apply(
@@ -48,6 +64,9 @@ public final class DinosaurProceduralAnimator {
     }
 
     private static void applyBodyPose(BoneSnapshot body, DinosaurProceduralPose pose) {
+        body.setTranslateY(
+                body.getTranslateY()
+                        + pose.bodyTranslationYBlocks() * MODEL_UNITS_PER_BLOCK);
         body.setRotX(body.getRotX() + pose.pitchRadians());
         body.setRotZ(body.getRotZ() + pose.rollRadians());
     }
@@ -56,6 +75,10 @@ public final class DinosaurProceduralAnimator {
         return start + (end - start) * alpha;
     }
 
-    private record SmoothedAngles(float pitch, float roll, double renderTime) {
+    private record SmoothedPose(
+            float pitch,
+            float roll,
+            float bodyTranslationY,
+            double renderTime) {
     }
 }

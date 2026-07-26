@@ -13,8 +13,10 @@ public record DinosaurProceduralPose(
         float bodyYawDegrees,
         float pitchRadians,
         float rollRadians,
+        float bodyTranslationYBlocks,
         float targetPitchRadians,
         float targetRollRadians,
+        float targetBodyTranslationYBlocks,
         boolean pitchResolved,
         boolean rollResolved,
         List<DinosaurTerrainSample> samples) {
@@ -40,14 +42,19 @@ public record DinosaurProceduralPose(
         return count;
     }
 
-    public DinosaurProceduralPose withSmoothedAngles(float pitch, float roll) {
+    public DinosaurProceduralPose withSmoothedValues(
+            float pitch,
+            float roll,
+            float bodyTranslationY) {
         return new DinosaurProceduralPose(
                 this.origin,
                 this.bodyYawDegrees,
                 pitch,
                 roll,
+                bodyTranslationY,
                 this.targetPitchRadians,
                 this.targetRollRadians,
+                this.targetBodyTranslationYBlocks,
                 this.pitchResolved,
                 this.rollResolved,
                 this.samples);

@@ -39,7 +39,7 @@ La entidad conservará una única hitbox principal de Minecraft para movimiento,
 3. `DinosaurBodyRotationControl` y, solo si hace falta, `DinosaurMoveControl`: giro lógico limitado en servidor.
 4. `DinosaurProceduralState`: estado lógico pequeño e interpolable.
 5. `DinosaurTerrainSampler`: solver geométrico común y determinista para cliente y servidor.
-6. `DinosaurProceduralPose`: resultado común de pitch, roll, validez por eje y contactos.
+6. `DinosaurProceduralPose`: resultado común de pitch, roll, traslación vertical corporal, validez y contactos.
 7. `DinosaurProceduralAnimator`: aplica la pose a snapshots de huesos después de las animaciones JSON.
 8. `DinosaurPartEntity`: selección y daño por zona sin IA, guardado ni paquete de aparición independiente.
 9. `DinosaurDebugRenderer`: puntos, direcciones, valores y hitboxes mediante el sistema de gizmos actual.
@@ -154,7 +154,7 @@ entidad se reutilizará antes de añadir nuevos datos sincronizados.
 ## Orden de implementación y puertas
 
 1. Entidad mínima: registrar el prototipo, atributos, renderer y animaciones idle/walk sin corrección procedural. Verificar cliente y servidor dedicado.
-2. Configuración y cuatro muestras: visualizar primero los puntos; después calcular pitch/roll sin patas. Probar plano, slab, escaleras y un bloque.
+2. Configuración y cuatro muestras: visualizar primero los puntos; después calcular pitch/roll y compensación Y común sin mover patas individuales. Probar plano, slab, escaleras, un bloque y bordes sin suelo.
 3. Puerta 1: no continuar si existe vibración severa quieto. Ajustar histéresis, frecuencia y límites.
 4. Corrección vertical independiente de cuatro patas, ponderada por apoyo aproximado.
 5. Puerta 2: comparar caminando y quieto con el sistema activado y desactivado. No añadir IK si la traslación vertical convence.

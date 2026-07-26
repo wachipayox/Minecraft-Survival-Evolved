@@ -8,9 +8,12 @@ public record DinosaurProceduralConfig(
         SupportProbe frontRight,
         SupportProbe backLeft,
         SupportProbe backRight,
+        double bodyPivotHeight,
+        double footContactHeight,
         double contactPatchRadius,
         double sampleAbove,
         double sampleBelow,
+        double maxBodyVerticalCorrection,
         float maxPitchRadians,
         float maxRollRadians,
         float slopeDeadzoneRadians,
@@ -26,17 +29,24 @@ public record DinosaurProceduralConfig(
             new SupportProbe(SupportPoint.FRONT_RIGHT, -4.0 / 16.0, -9.0 / 16.0),
             new SupportProbe(SupportPoint.BACK_LEFT, 4.0 / 16.0, 9.0 / 16.0),
             new SupportProbe(SupportPoint.BACK_RIGHT, -4.0 / 16.0, 9.0 / 16.0),
+            14.0 / 16.0,
+            0.0,
             2.0 / 16.0,
             1.25,
-            3.0,
-            (float) Math.toRadians(18.0),
+            1.5,
+            0.75,
+            (float) Math.toRadians(35.0),
             (float) Math.toRadians(15.0),
             (float) Math.toRadians(0.5),
             9.0F);
 
     public DinosaurProceduralConfig {
-        if (contactPatchRadius < 0.0 || sampleAbove < 0.0 || sampleBelow < 0.0) {
-            throw new IllegalArgumentException("Terrain sample distances must be non-negative");
+        if (bodyPivotHeight < footContactHeight
+                || contactPatchRadius < 0.0
+                || sampleAbove < 0.0
+                || sampleBelow < 0.0
+                || maxBodyVerticalCorrection < 0.0) {
+            throw new IllegalArgumentException("Procedural terrain geometry values are invalid");
         }
         if (maxPitchRadians < 0.0F || maxRollRadians < 0.0F) {
             throw new IllegalArgumentException("Procedural angle limits must be non-negative");
@@ -48,6 +58,15 @@ public record DinosaurProceduralConfig(
 
     public List<SupportProbe> supportProbes() {
         return List.of(this.frontLeft, this.frontRight, this.backLeft, this.backRight);
+    }
+
+    public SupportProbe supportProbe(SupportPoint point) {
+        return switch (point) {
+            case FRONT_LEFT -> this.frontLeft;
+            case FRONT_RIGHT -> this.frontRight;
+            case BACK_LEFT -> this.backLeft;
+            case BACK_RIGHT -> this.backRight;
+        };
     }
 
     public enum SupportPoint {

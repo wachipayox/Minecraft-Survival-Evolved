@@ -4,10 +4,12 @@ import com.wachi.mse.entity.dinosaur.config.DinosaurProceduralConfig.SupportPoin
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Authoritative terrain contact selected for one configured support point.
+ * Terrain contact selected for one configured support point.
  *
  * <p>The X/Z coordinates can differ slightly from the nominal bone pivot when
- * the contact-patch fallback finds terrain under the edge of a foot.</p>
+ * the contact-patch fallback finds terrain under the edge of a foot. If
+ * {@link #valid} is false, the Y coordinate represents the configured lower
+ * search boundary and therefore an inferred drop rather than real terrain.</p>
  */
 public record DinosaurTerrainSample(
         SupportPoint point,

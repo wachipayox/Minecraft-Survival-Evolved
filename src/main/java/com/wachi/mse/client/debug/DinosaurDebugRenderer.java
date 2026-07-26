@@ -80,11 +80,12 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
         Gizmos.billboardText(
                 String.format(
                         Locale.ROOT,
-                        "MSE pitch %+.1f\u00b0 [%s] / roll %+.1f\u00b0 [%s] / %d/4",
+                        "MSE pitch %+.1f\u00b0 [%s] / roll %+.1f\u00b0 [%s] / bodyY %+.2f / %d/4",
                         Math.toDegrees(pose.pitchRadians()),
                         pose.pitchResolved() ? "ok" : "--",
                         Math.toDegrees(pose.rollRadians()),
                         pose.rollResolved() ? "ok" : "--",
+                        pose.bodyTranslationYBlocks(),
                         pose.validSampleCount()),
                 pose.origin().add(0.0, dinosaur.getBbHeight() + 0.4, 0.0),
                 TextGizmo.Style
@@ -93,7 +94,7 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
     }
 
     private static int poseColor(DinosaurProceduralPose pose) {
-        if (pose.fullyResolved()) {
+        if (pose.fullyResolved() && pose.validSampleCount() == pose.samples().size()) {
             return 0xFF55FF55;
         }
         return pose.terrainValid() ? 0xFFFFFF55 : 0xFFFFAA00;

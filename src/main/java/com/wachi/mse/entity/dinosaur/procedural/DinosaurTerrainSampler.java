@@ -84,39 +84,47 @@ public final class DinosaurTerrainSampler {
                     config.sampleAbove(),
                     config.sampleBelow());
             boolean valid = hit != null;
-            Vec3 position = valid
-                    ? hit.position()
-                    : modelPointToWorld(
-                            origin,
-                            probe.modelXOffset(),
-                            probe.modelZOffset(),
-                            sinYaw,
-                            cosYaw);
+            Vec3 position;
+            if (valid) {
+                position = hit.position();
+            } else {
+                // Unsupported feet still describe a bounded drop. This makes
+                // a ledge influence the pose without inventing distant ground.
+                Vec3 nominalPosition = modelPointToWorld(
+                        origin,
+                        probe.modelXOffset(),
+                        probe.modelZOffset(),
+                        sinYaw,
+                        cosYaw);
+                position = new Vec3(
+                        nominalPosition.x,
+                        origin.y - config.sampleBelow(),
+                        nominalPosition.z);
+            }
             DinosaurTerrainSample sample = new DinosaurTerrainSample(
                     probe.point(),
                     position,
-                    valid ? position.y - origin.y : 0.0,
+                    position.y - origin.y,
                     valid);
             samples.add(sample);
             byPoint.put(probe.point(), sample);
         }
 
-        double frontHeight = averageValidHeight(
+        double frontHeight = averageHeight(
                 byPoint.get(SupportPoint.FRONT_LEFT),
                 byPoint.get(SupportPoint.FRONT_RIGHT));
-        double backHeight = averageValidHeight(
+        double backHeight = averageHeight(
                 byPoint.get(SupportPoint.BACK_LEFT),
                 byPoint.get(SupportPoint.BACK_RIGHT));
-        double leftHeight = averageValidHeight(
+        double leftHeight = averageHeight(
                 byPoint.get(SupportPoint.FRONT_LEFT),
                 byPoint.get(SupportPoint.BACK_LEFT));
-        double rightHeight = averageValidHeight(
+        double rightHeight = averageHeight(
                 byPoint.get(SupportPoint.FRONT_RIGHT),
                 byPoint.get(SupportPoint.BACK_RIGHT));
-        boolean pitchResolved =
-                Double.isFinite(frontHeight) && Double.isFinite(backHeight);
-        boolean rollResolved =
-                Double.isFinite(leftHeight) && Double.isFinite(rightHeight);
+        boolean hasRealSupport = samples.stream().anyMatch(DinosaurTerrainSample::valid);
+        boolean pitchResolved = hasRealSupport;
+        boolean rollResolved = hasRealSupport;
         double longitudinalDistance =
                 Math.abs(config.backLeft().modelZOffset() - config.frontLeft().modelZOffset());
         double lateralDistance =
@@ -135,14 +143,19 @@ public final class DinosaurTerrainSampler {
                         config.maxRollRadians(),
                         config.slopeDeadzoneRadians())
                 : 0.0F;
+        float bodyTranslationY = hasRealSupport
+                ? calculateBodyTranslationY(config, byPoint, pitch, roll)
+                : 0.0F;
 
         return new DinosaurProceduralPose(
                 origin,
                 bodyYawDegrees,
                 pitch,
                 roll,
+                bodyTranslationY,
                 pitch,
                 roll,
+                bodyTranslationY,
                 pitchResolved,
                 rollResolved,
                 samples);
@@ -242,20 +255,54 @@ public final class DinosaurTerrainSampler {
         return value * value;
     }
 
-    private static double averageValidHeight(
+    private static double averageHeight(
             DinosaurTerrainSample first,
             DinosaurTerrainSample second) {
-        double total = 0.0;
-        int count = 0;
-        if (first != null && first.valid()) {
-            total += first.position().y;
-            count++;
+        if (first == null || second == null) {
+            return Double.NaN;
         }
-        if (second != null && second.valid()) {
-            total += second.position().y;
-            count++;
+        return (first.position().y + second.position().y) * 0.5;
+    }
+
+    private static float calculateBodyTranslationY(
+            DinosaurProceduralConfig config,
+            Map<SupportPoint, DinosaurTerrainSample> byPoint,
+            float pitch,
+            float roll) {
+        double sinPitch = Math.sin(pitch);
+        double cosPitch = Math.cos(pitch);
+        double sinRoll = Math.sin(roll);
+        double cosRoll = Math.cos(roll);
+        double localFootY = config.footContactHeight() - config.bodyPivotHeight();
+        double totalCorrection = 0.0;
+        int supportCount = 0;
+
+        for (DinosaurTerrainSample sample : byPoint.values()) {
+            if (!sample.valid()) {
+                continue;
+            }
+
+            SupportProbe probe = config.supportProbe(sample.point());
+            // GeckoLib applies body X rotation first and body Z rotation second.
+            double rotatedLocalY = sinRoll * probe.modelXOffset()
+                    + cosRoll * (
+                            cosPitch * localFootY
+                                    - sinPitch * probe.modelZOffset());
+            double rotatedContactHeight =
+                    config.bodyPivotHeight() + rotatedLocalY;
+            totalCorrection += sample.heightOffset() - rotatedContactHeight;
+            supportCount++;
         }
-        return count == 0 ? Double.NaN : total / count;
+
+        if (supportCount == 0) {
+            return 0.0F;
+        }
+
+        double correction = totalCorrection / supportCount;
+        return (float) Mth.clamp(
+                correction,
+                -config.maxBodyVerticalCorrection(),
+                config.maxBodyVerticalCorrection());
     }
 
     private static float limitedSlope(

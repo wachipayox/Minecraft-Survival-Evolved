@@ -35,8 +35,11 @@ Los apoyos se expresan en bloques a partir de las coordenadas del modelo:
 `DinosaurProceduralConfig` también fija:
 
 - radio de la huella de contacto: 0.125 bloques;
-- búsqueda vertical: 1.25 bloques por encima y 3 por debajo;
-- pitch máximo: 18 grados;
+- pivote del cuerpo: 0.875 bloques sobre la base del modelo;
+- búsqueda vertical: 1.25 bloques por encima y 1.5 por debajo;
+- caída inferida cuando no aparece terreno: 1.5 bloques;
+- corrección vertical corporal máxima: 0.75 bloques;
+- pitch máximo: 35 grados;
 - roll máximo: 15 grados;
 - zona muerta: 0.5 grados;
 - respuesta exponencial de suavizado: 9 por segundo.
@@ -54,25 +57,42 @@ formas parciales, pero un pivote situado unos píxeles fuera del borde de un
 bloque todavía puede reconocer que el pie lo toca.
 
 La altura elegida es el contacto más alto dentro del margen vertical y, en
-caso de empate, el más cercano al centro nominal del pie. No se fuerzan
-cargas de chunks.
+caso de empate, el más cercano al centro nominal del pie. Si no aparece
+ninguna superficie, la muestra se conserva en rojo como una caída inferida
+hasta el límite inferior. De esta forma un apoyo real junto a un vacío sigue
+produciendo pendiente en lugar de cancelar el eje. Si los cuatro apoyos están
+en el aire, la pose permanece neutra. No se fuerzan cargas de chunks.
 
-Pitch y roll se resuelven por separado:
+Para calcular pitch y roll:
 
-- pitch necesita al menos un apoyo frontal y uno trasero;
-- roll necesita al menos un apoyo izquierdo y uno derecho;
-- una muestra inválida ya no cancela toda la postura;
-- tres muestras válidas siempre permiten resolver ambos ejes.
+- las superficies encontradas aportan su altura real;
+- las muestras sin superficie aportan la caída inferior inferida;
+- al menos un contacto real activa la pose;
+- el límite de pitch de 35 grados evita rotaciones verticales extremas.
 
-Si sólo hay información suficiente para un eje, el otro queda neutro y la
-depuración muestra explícitamente cuál está sin resolver.
+La reducción de tres a 1.5 bloques impide que un suelo muy lejano convierta
+el vacío en una falsa superficie baja.
+
+## Compensación del pivote corporal
+
+El hueso `body` rota alrededor de Y=14 píxeles, mientras que el contacto de
+los pies está en Y=0. Una rotación con el pivote fijo levanta las patas del
+lado alto aunque su sonda siga apoyada. El solver reproduce el orden de
+rotación X/Z de GeckoLib, calcula cuánto se desplazaría cada pie con contacto
+real y obtiene una traslación Y común del cuerpo.
+
+Esta traslación mantiene el apoyo principal mientras el cuerpo se inclina y
+se suaviza junto con pitch y roll. No sustituye la futura corrección vertical
+de cada pata: esa fase resolverá el residuo individual cuando varios pies
+deban alcanzar alturas diferentes, sin obligar a estirar una sola pata para
+sostener todo el modelo.
 
 ## Integración con GeckoLib
 
 `PrototypeDinosaurRenderer.addRenderData` solicita la pose interpolada y la
 guarda en un `DataTicket`. Después de que GeckoLib aplique los controladores
-JSON, `adjustModelBonesForRender` suma pitch y roll al `BoneSnapshot` de
-`body`.
+JSON, `adjustModelBonesForRender` suma pitch, roll y la compensación vertical
+al `BoneSnapshot` de `body`.
 
 El suavizado se conserva por entidad en un `WeakHashMap`; usa tiempo de render
 fraccionario y evita avanzar dos veces si una entidad genera más de un pase
@@ -87,11 +107,12 @@ Con F3 visible, `DinosaurDebugRenderer` emite:
 - rojo para una muestra sin superficie;
 - una línea entre la altura de origen y cada contacto;
 - el offset vertical de cada muestra;
-- pitch y roll suavizados, estado `ok` o `--` de cada eje y total de muestras
-  válidas.
+- pitch, roll y `bodyY` suavizados, estado `ok` o `--` de cada eje y total de
+  muestras reales.
 
-El texto es verde cuando ambos ejes están resueltos, amarillo cuando sólo uno
-lo está y naranja cuando ninguno dispone de suficientes contactos.
+El texto es verde cuando las cuatro superficies son reales, amarillo cuando
+la pose combina contactos con caídas inferidas y naranja cuando no hay ningún
+apoyo real.
 
 ## Incidencia corregida
 
@@ -112,5 +133,5 @@ ha eliminado; ahora la pose depende sólo de geometría reproducible.
 - no quedan usos de `onGround()` en el cálculo procedural.
 
 La corrección vertical individual de patas y la distribución de giro entre
-cuello y cabeza permanecen fuera de esta fase hasta definir su comportamiento
-visual.
+cuello y cabeza permanecen fuera de esta fase. El movimiento común de
+`body` sólo corrige el flotado introducido por su pivote al inclinarse.
