@@ -89,7 +89,7 @@ public record DinosaurProceduralConfig(
                     1.0,
                     1.0 / 16.0,
                     8,
-                    0.12F,
+                    0.02F,
                     0.006,
                     0.055),
             14.0 / 16.0,

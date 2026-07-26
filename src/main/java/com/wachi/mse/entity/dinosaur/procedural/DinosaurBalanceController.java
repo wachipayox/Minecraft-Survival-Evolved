@@ -24,6 +24,7 @@ public final class DinosaurBalanceController {
     private State state = State.STABLE;
     private int unstableTicks;
     private DinosaurStabilityAssessment lastAssessment;
+    private Vec3 committedFallDirection = Vec3.ZERO;
 
     public void tick(
             Mob dinosaur,
@@ -43,14 +44,16 @@ public final class DinosaurBalanceController {
             DinosaurProceduralPose pose =
                     DinosaurTerrainSampler.sampleAuthoritative(dinosaur, config);
             this.lastAssessment = pose.stability();
-            this.updateState(pose, config.stability());
+            this.updateState(dinosaur, pose, config.stability());
         }
 
         if (this.state == State.FALLING && this.lastAssessment != null) {
+            dinosaur.getNavigation().stop();
+            dinosaur.getMoveControl().setWait();
             applyFallAcceleration(
                     dinosaur,
                     config.stability(),
-                    this.lastAssessment.fallDirectionWorld());
+                    this.committedFallDirection);
         }
     }
 
@@ -70,24 +73,30 @@ public final class DinosaurBalanceController {
         this.state = State.STABLE;
         this.unstableTicks = 0;
         this.lastAssessment = null;
+        this.committedFallDirection = Vec3.ZERO;
     }
 
     private void updateState(
+            Mob dinosaur,
             DinosaurProceduralPose pose,
             DinosaurStabilityConfig config) {
         DinosaurStabilityAssessment assessment = pose.stability();
-        boolean dynamicBalance =
-                pose.gait().activity() > config.maximumActivityForStaticBalance();
+        boolean activelyWalking =
+                pose.gait().activity() > config.maximumActivityForStaticBalance()
+                        || dinosaur.getNavigation().isInProgress()
+                        || dinosaur.getMoveControl().hasWanted();
         if (!assessment.requiresRecovery()
                 || assessment.fallDirectionWorld().lengthSqr()
                         <= DIRECTION_EPSILON) {
             this.state = State.STABLE;
             this.unstableTicks = 0;
+            this.committedFallDirection = Vec3.ZERO;
             return;
         }
-        if (dynamicBalance && this.state != State.FALLING) {
+        if (activelyWalking && this.state != State.FALLING) {
             this.state = State.STABLE;
             this.unstableTicks = 0;
+            this.committedFallDirection = Vec3.ZERO;
             return;
         }
 
@@ -97,6 +106,10 @@ public final class DinosaurBalanceController {
         if (this.unstableTicks >= config.recoveryTicks()) {
             if (this.state != State.FALLING) {
                 this.state = State.FALLING;
+                this.committedFallDirection =
+                        assessment.fallDirectionWorld().normalize();
+                dinosaur.getNavigation().stop();
+                dinosaur.getMoveControl().setWait();
             }
         } else {
             this.state = State.RECOVERING;

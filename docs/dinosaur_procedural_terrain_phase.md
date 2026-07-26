@@ -118,6 +118,12 @@ encuentra terreno ni siquiera en la zona de observación, se conserva el
 objetivo visual acotado a 0,75 bloques; aumentar la conciencia del entorno no
 hace que una pata cuelgue indefinidamente sobre el vacío.
 
+Una pata sin ninguna colisión usa directamente ese objetivo inferior, incluso
+si el reloj de marcha la habría puesto en fase de vuelo. Así la extremidad se
+extiende hasta la misma altura visual que tendría al encontrar un bloque justo
+en el límite mínimo, en lugar de recogerse mientras el animal ya pierde el
+apoyo.
+
 El solver busca numéricamente la traslación Y que minimiza las violaciones de
 alcance de todas las patas realmente apoyadas. Después resuelve cada cadena
 con IK de dos segmentos en 3D y marca `reachable()` como falso si tuvo que
@@ -169,13 +175,20 @@ mantiene una instancia pequeña del controlador y la llama desde
 y la última evaluación.
 
 La regla del polígono estático se pausa mientras la actividad de marcha
-supera el umbral configurado. Un bípedo en movimiento pasa gran parte del
+supera el umbral configurado, que en el prototipo es 0,02 y por tanto exige
+que la animación esté prácticamente detenida. Un bípedo en movimiento pasa gran parte del
 ciclo sobre una sola pata y necesita un modelo dinámico de momento/capture
 point, no una regla estática que produciría caídas falsas. La geometría sigue
 calculándose y las patas en vuelo continúan excluidas de la pendiente y del
-apoyo. Una caída que ya superó la gracia permanece enclavada hasta recuperar
-un polígono estable o abandonar el suelo; así el pequeño desplazamiento que
-ella misma genera no se confunde con una marcha voluntaria.
+apoyo. Además del reloj visual, una ruta de navegación o un destino pendiente
+de `MoveControl` cuentan como marcha y evitan iniciar la caída estática.
+
+Una caída que ya superó la gracia permanece enclavada hasta recuperar un
+polígono estable o abandonar el suelo. En ese momento congela la dirección
+hacia el centro ponderado de las patas realmente sin apoyo, cancela la ruta y
+pone `MoveControl` en espera. De este modo la IA no puede sobrescribir el
+empuje después en el mismo tick y el ciclo de pasos no hace oscilar el lado de
+caída.
 
 `NoAI` es una congelación especial de Minecraft: `LivingEntity` deja de
 ejecutar `travel`, que también integra gravedad y movimiento impuesto. Por

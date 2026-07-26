@@ -84,11 +84,20 @@ public final class DinosaurStabilitySolver {
         double signedMargin = boundary.inside()
                 ? boundary.distance()
                 : -boundary.distance();
-        Vec3 fallDirection = boundary.inside()
-                ? Vec3.ZERO
-                : horizontalDirection(boundary.closestPoint(), centerOfMass);
         boolean stable =
                 signedMargin >= -stability.toleratedOutsideDistance();
+        Vec3 polygonDirection = boundary.inside()
+                ? Vec3.ZERO
+                : horizontalDirection(boundary.closestPoint(), centerOfMass);
+        // When actual feet are missing, their weighted centroid is the most
+        // readable fall direction for the player: it points towards the
+        // unsupported anatomy directly. The polygon normal remains the
+        // fallback for unusual layouts where those vectors cancel out.
+        Vec3 fallDirection = stable
+                ? Vec3.ZERO
+                : unsupportedBias.lengthSqr() > EPSILON
+                        ? unsupportedBias.normalize()
+                        : polygonDirection;
         return new DinosaurStabilityAssessment(
                 true,
                 stable,

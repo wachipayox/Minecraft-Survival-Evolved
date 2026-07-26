@@ -131,8 +131,14 @@ public final class DinosaurLegIkSolver {
         double neutralTarget = rig.footPivotHeight();
         double swingAmount = (1.0 - sample.supportWeight()) * gait.activity();
         double swingBase = Math.max(neutralTarget, stanceTarget);
-        double targetHeight = Mth.lerp(sample.supportWeight(), swingBase, stanceTarget)
-                + config.swingFootLift() * swingAmount;
+        // With no collision anywhere in the observation range, reaching for
+        // the bounded lower target reads better than playing a swing pose
+        // over empty space. It is exactly the same height used when a block is
+        // found at the configured minimum visual drop.
+        double targetHeight = sample.valid()
+                ? Mth.lerp(sample.supportWeight(), swingBase, stanceTarget)
+                        + config.swingFootLift() * swingAmount
+                : stanceTarget;
         return solveTarget(
                 config,
                 rig,
