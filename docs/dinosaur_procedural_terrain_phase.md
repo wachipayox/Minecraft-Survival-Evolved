@@ -148,10 +148,19 @@ El resultado geométrico tiene tres etapas lógicas:
 3. caída: el servidor aplica una aceleración horizontal acotada desde el
    borde de soporte hacia el lado sin apoyo.
 
+Si ninguna pata toca terreno pero el `AABB` sigue retenido por un bloque bajo
+el torso, ya no se considera un resultado indeterminado: es una postura sin
+soporte. La dirección se obtiene del sesgo conjunto de las patas sin apoyo,
+dando más peso al vacío y a los objetivos más inalcanzables. Si el caso es
+perfectamente simétrico, la orientación frontal del animal sirve únicamente
+como desempate determinista.
+
 La aceleración no simula un ragdoll ni sustituye las colisiones. Su única
 función es sacar de forma sostenida el `AABB` principal del bloque que lo
 retenía; a partir de ahí actúan el movimiento, la colisión y la gravedad de
-Minecraft. El máximo del prototipo es 0,22 bloques/tick.
+Minecraft. En el prototipo suma como máximo 0,006 bloques/tick de velocidad
+por tick y deja de acelerar a 0,055 bloques/tick. No sustituye de golpe una
+velocidad contraria.
 
 `DinosaurBalanceController` acepta cualquier `Mob` y su
 `DinosaurProceduralConfig`; no conoce la clase del prototipo. Cada especie
@@ -164,7 +173,9 @@ supera el umbral configurado. Un bípedo en movimiento pasa gran parte del
 ciclo sobre una sola pata y necesita un modelo dinámico de momento/capture
 point, no una regla estática que produciría caídas falsas. La geometría sigue
 calculándose y las patas en vuelo continúan excluidas de la pendiente y del
-apoyo.
+apoyo. Una caída que ya superó la gracia permanece enclavada hasta recuperar
+un polígono estable o abandonar el suelo; así el pequeño desplazamiento que
+ella misma genera no se confunde con una marcha voluntaria.
 
 `NoAI` es una congelación especial de Minecraft: `LivingEntity` deja de
 ejecutar `travel`, que también integra gravedad y movimiento impuesto. Por

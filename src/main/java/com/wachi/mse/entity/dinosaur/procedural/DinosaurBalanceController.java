@@ -12,8 +12,10 @@ import net.minecraft.world.phys.Vec3;
  * Once a stationary centre of mass remains outside the support polygon for
  * the configured grace period, a bounded horizontal acceleration moves the
  * main collision box off the ledge and lets normal Minecraft gravity take
- * over. Dynamic gait balance is deliberately left to locomotion rather than
- * applying a static-polygon rule while a foot is in swing.</p>
+ * over. The acceleration is additive and never replaces an opposing velocity
+ * in one tick. Dynamic gait balance is deliberately left to locomotion rather
+ * than applying a static-polygon rule while a foot is in swing; an already
+ * committed fall remains latched so its own movement cannot cancel it.</p>
  */
 public final class DinosaurBalanceController {
     private static final int SAMPLE_INTERVAL_TICKS = 2;
@@ -74,10 +76,16 @@ public final class DinosaurBalanceController {
             DinosaurProceduralPose pose,
             DinosaurStabilityConfig config) {
         DinosaurStabilityAssessment assessment = pose.stability();
-        if (pose.gait().activity() > config.maximumActivityForStaticBalance()
-                || !assessment.requiresRecovery()
+        boolean dynamicBalance =
+                pose.gait().activity() > config.maximumActivityForStaticBalance();
+        if (!assessment.requiresRecovery()
                 || assessment.fallDirectionWorld().lengthSqr()
                         <= DIRECTION_EPSILON) {
+            this.state = State.STABLE;
+            this.unstableTicks = 0;
+            return;
+        }
+        if (dynamicBalance && this.state != State.FALLING) {
             this.state = State.STABLE;
             this.unstableTicks = 0;
             return;
@@ -86,9 +94,13 @@ public final class DinosaurBalanceController {
         this.unstableTicks = Math.min(
                 config.recoveryTicks(),
                 this.unstableTicks + SAMPLE_INTERVAL_TICKS);
-        this.state = this.unstableTicks >= config.recoveryTicks()
-                ? State.FALLING
-                : State.RECOVERING;
+        if (this.unstableTicks >= config.recoveryTicks()) {
+            if (this.state != State.FALLING) {
+                this.state = State.FALLING;
+            }
+        } else {
+            this.state = State.RECOVERING;
+        }
     }
 
     private static void applyFallAcceleration(
@@ -98,11 +110,12 @@ public final class DinosaurBalanceController {
         Vec3 movement = dinosaur.getDeltaMovement();
         double speedAlongFall =
                 movement.x * direction.x + movement.z * direction.z;
-        double targetSpeed = Math.min(
-                config.maximumFallHorizontalSpeed(),
-                Math.max(0.0, speedAlongFall)
-                        + config.fallAccelerationPerTick());
-        double acceleration = targetSpeed - speedAlongFall;
+        if (speedAlongFall >= config.maximumFallHorizontalSpeed()) {
+            return;
+        }
+        double acceleration = Math.min(
+                config.fallAccelerationPerTick(),
+                config.maximumFallHorizontalSpeed() - speedAlongFall);
         dinosaur.setDeltaMovement(
                 movement.x + direction.x * acceleration,
                 movement.y,

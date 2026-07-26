@@ -32,6 +32,19 @@ public record DinosaurStabilityAssessment(
                 List.of());
     }
 
+    public static DinosaurStabilityAssessment fullyUnsupported(
+            Vec3 centerOfMassWorld,
+            Vec3 fallDirectionWorld) {
+        return new DinosaurStabilityAssessment(
+                true,
+                false,
+                Double.NEGATIVE_INFINITY,
+                centerOfMassWorld,
+                fallDirectionWorld,
+                0,
+                List.of());
+    }
+
     public boolean requiresRecovery() {
         return this.evaluable && !this.stable;
     }

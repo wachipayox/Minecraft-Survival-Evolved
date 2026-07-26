@@ -145,11 +145,15 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
                         "balance %s / margin %s / support %d/%d",
                         stabilityLabel(stability),
                         stability.evaluable()
+                                        && Double.isFinite(
+                                                stability.signedMarginBlocks())
                                 ? String.format(
                                         Locale.ROOT,
                                         "%+.2f",
                                         stability.signedMarginBlocks())
-                                : "--",
+                                : stability.supportingLegCount() == 0
+                                        ? "void"
+                                        : "--",
                         stability.supportingLegCount(),
                         pose.legs().size()),
                 pose.origin().add(0.0, dinosaur.getBbHeight() - 0.04, 0.0),
@@ -207,6 +211,9 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
     }
 
     private static String stabilityLabel(DinosaurStabilityAssessment stability) {
+        if (stability.supportingLegCount() == 0) {
+            return "unsupported";
+        }
         if (!stability.evaluable()) {
             return "unresolved";
         }

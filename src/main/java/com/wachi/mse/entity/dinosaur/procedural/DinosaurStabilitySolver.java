@@ -39,9 +39,23 @@ public final class DinosaurStabilitySolver {
 
         List<Vec3> footprintVertices = new ArrayList<>();
         int supportingLegs = 0;
+        Vec3 unsupportedBias = Vec3.ZERO;
         for (DinosaurLegPose leg : legs) {
             DinosaurTerrainSample sample = samplesByLeg.get(leg.legId());
-            if (sample == null || !leg.planted()) {
+            if (sample == null) {
+                continue;
+            }
+            if (!leg.planted()) {
+                double reachError = Math.abs(
+                        leg.targetFootHeightOffset()
+                                - leg.solvedFootHeightOffset());
+                double missingGroundBias =
+                        sample.valid() ? 0.0 : config.sampleBelow();
+                double weight = 1.0 + reachError + missingGroundBias;
+                unsupportedBias = unsupportedBias.add(
+                        (sample.position().x - centerOfMass.x) * weight,
+                        0.0,
+                        (sample.position().z - centerOfMass.z) * weight);
                 continue;
             }
             supportingLegs++;
@@ -53,6 +67,14 @@ public final class DinosaurStabilitySolver {
 
         List<Vec3> hull = convexHull(footprintVertices);
         if (hull.size() < 3) {
+            if (supportingLegs == 0) {
+                Vec3 fallDirection = unsupportedBias.lengthSqr() > EPSILON
+                        ? unsupportedBias.normalize()
+                        : modelForwardDirection(bodyYawDegrees);
+                return DinosaurStabilityAssessment.fullyUnsupported(
+                        centerOfMass,
+                        fallDirection);
+            }
             return DinosaurStabilityAssessment.notEvaluable(
                     centerOfMass,
                     supportingLegs);
@@ -206,6 +228,13 @@ public final class DinosaurStabilitySolver {
                 origin.x + cosYaw * renderedModelX + sinYaw * modelZ,
                 origin.y,
                 origin.z - sinYaw * renderedModelX + cosYaw * modelZ);
+    }
+
+    private static Vec3 modelForwardDirection(float bodyYawDegrees) {
+        Vec3 origin = Vec3.ZERO;
+        return modelPointToWorld(origin, 0.0, -1.0, bodyYawDegrees)
+                .subtract(origin)
+                .normalize();
     }
 
     private record BoundaryDistance(
