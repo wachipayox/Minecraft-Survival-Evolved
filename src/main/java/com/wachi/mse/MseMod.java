@@ -1,5 +1,6 @@
 package com.wachi.mse;
 
+import com.wachi.mse.registry.MseEntities;
 import com.mojang.logging.LogUtils;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
@@ -12,6 +13,8 @@ public final class MseMod {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public MseMod(IEventBus modEventBus) {
+        MseEntities.ENTITY_TYPES.register(modEventBus);
+        modEventBus.addListener(MseEntities::registerAttributes);
         modEventBus.addListener(this::commonSetup);
     }
 

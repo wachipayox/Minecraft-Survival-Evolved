@@ -1,25 +1,36 @@
 # Minecraft Survival Evolved
 
-NeoForge mod for Minecraft 26.1.2, built with Java 25 and GeckoLib 5.
+Mod para Minecraft 26.1.2 sobre NeoForge 26.1.2.84, Java 25 y GeckoLib 5.
 
-## Development setup
+## Estado actual
 
-This template repository can be directly cloned to get you started with a new
-mod. Simply create a new repository cloned from this one, by following the
-instructions provided by [GitHub](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template).
+- ID: `mc_evolved`
+- paquete base: `com.wachi.mse`
+- clase principal: `MseMod`
+- Mixins configurados en `mc_evolved.mixins.json`
+- entidad GeckoLib inicial: `mc_evolved:prototype_dinosaur`
 
-Once you have your clone, simply open the repository in the IDE of your choice. The usual recommendation for an IDE is either IntelliJ IDEA or Eclipse.
+El primer prototipo incluye un modelo temporal, textura pixel art, animaciones
+`idle` y `walk`, atributos y una IA mínima de paseo. Se puede invocar con:
 
-If at any point you are missing libraries in your IDE, or you've run into problems you can
-run `gradlew --refresh-dependencies` to refresh the local cache. `gradlew clean` to reset everything 
-{this does not affect your code} and then start the process again.
+```mcfunction
+/summon mc_evolved:prototype_dinosaur ~ ~ ~
+```
 
-## Mapping names
-By default, the MDK is configured to use the official mapping names from Mojang for methods and fields 
-in the Minecraft codebase. These names are covered by a specific license. All modders should be aware of this
-license. For the latest license text, refer to the mapping file itself, or the reference copy here:
-https://github.com/NeoForged/NeoForm/blob/main/Mojang.md
+![Dinosaurio prototipo](docs/images/prototype_dinosaur.png)
 
-## Additional resources
-Community Documentation: https://docs.neoforged.net/  
-NeoForged Discord: https://discord.neoforged.net/
+## Desarrollo
+
+Compila y ejecuta las comprobaciones con:
+
+```powershell
+.\gradlew.bat clean build
+```
+
+El proyecto editable de Blockbench está en
+`art/blockbench/prototype_dinosaur/prototype_dinosaur.bbmodel`. Los recursos
+exportados que carga GeckoLib están bajo `src/main/resources/assets/mc_evolved/`.
+Los `.bbmodel` se excluyen deliberadamente del JAR.
+
+La arquitectura y el orden de implementación del sistema procedural están
+documentados en `docs/dinosaur_procedural_animation_plan.md`.

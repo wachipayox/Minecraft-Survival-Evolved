@@ -2,6 +2,9 @@
 
 Fecha de inspección: 2026-07-26.
 
+Estado: fase 1 completada. La entidad GeckoLib mínima y sus verificaciones se
+documentan en `dinosaur_prototype_phase.md`.
+
 ## Estado técnico verificado
 
 | Componente | Versión o estado |
