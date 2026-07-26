@@ -66,7 +66,9 @@ configurada, de modo que no dependen de `PrototypeDinosaurEntity`.
 La configuración actual del prototipo usa:
 
 - huella de contacto de 0,125 bloques;
-- búsqueda de 1,25 bloques por encima y 0,75 por debajo;
+- búsqueda mínima de 1,25 bloques por encima y 0,75 por debajo;
+- observación inferior adaptativa de una longitud de pata más allá de su
+  alcance físico;
 - corrección vertical común máxima de 0,75 bloques;
 - elevación de vuelo de 2,5 píxeles;
 - inicio de inclinación por compresión al 60 % de extensión;
@@ -101,15 +103,78 @@ apoyo y para la elevación visible.
 ## Contactos, huecos y altura común
 
 Cada sonda usa la `VoxelShape` de colisión real, incluyendo slabs, escaleras
-y formas parciales. Si no encuentra terreno, crea un objetivo de caída
-acotado al límite inferior de 0,75 bloques. Ese objetivo influye en la
-pendiente y puede activar la inclinación por falta de alcance, pero no se
-trata como un apoyo real para decidir la traslación común del cuerpo.
+y formas parciales. La profundidad inferior se calcula por pata a partir de
+la suma real de sus dos segmentos, su fracción máxima de extensión y la
+corrección Y disponible para el cuerpo. A ese alcance físico se añade una
+distancia de observación configurable en múltiplos de la longitud de esa
+pata. Por ello un dinosaurio patilargo puede leer un escalón más profundo que
+uno paticorto sin usar constantes del prototipo.
+
+El terreno encontrado en la zona adicional sirve para medir el desnivel,
+pero no se convierte en apoyo si el IK no puede alcanzarlo. Tampoco participa
+en la optimización de altura común: así un suelo lejano no hace que el cuerpo
+baje tanto como para perder las patas que sí estaban sosteniéndolo. Si no se
+encuentra terreno ni siquiera en la zona de observación, se conserva el
+objetivo visual acotado a 0,75 bloques; aumentar la conciencia del entorno no
+hace que una pata cuelgue indefinidamente sobre el vacío.
 
 El solver busca numéricamente la traslación Y que minimiza las violaciones de
 alcance de todas las patas realmente apoyadas. Después resuelve cada cadena
 con IK de dos segmentos en 3D y marca `reachable()` como falso si tuvo que
 limitar el objetivo.
+
+## Estabilidad y caída desde bordes
+
+La flotación del `AABB` sobre un bloque central no se decide contando patas.
+El sistema proyecta el centro de masas configurable de cada especie sobre el
+plano horizontal y construye la envolvente convexa de áreas de pie finitas.
+Solo entran en esa envolvente las patas que:
+
+- tienen colisión real bajo el pie;
+- están en fase de apoyo;
+- alcanzan el contacto sin que el IK tenga que limitarse.
+
+Esto permite que dos apoyos diagonales de un cuadrúpedo o los dos pies de un
+bípedo formen una base válida, mientras que dos patas del mismo lado dejan el
+centro de masas fuera. El prototipo usa un radio de pie de 0,125 bloques, una
+tolerancia exterior de 0,0625 bloques y el centro de masas X/Z en el origen
+del modelo. Cada especie puede desplazar ese centro para representar colas,
+torsos o cabezas con distribuciones distintas.
+
+El resultado geométrico tiene tres etapas lógicas:
+
+1. estable: el centro está dentro del polígono o de su pequeño margen;
+2. recuperación: permanece fuera, pero todavía corre una gracia de 8 ticks;
+3. caída: el servidor aplica una aceleración horizontal acotada desde el
+   borde de soporte hacia el lado sin apoyo.
+
+La aceleración no simula un ragdoll ni sustituye las colisiones. Su única
+función es sacar de forma sostenida el `AABB` principal del bloque que lo
+retenía; a partir de ahí actúan el movimiento, la colisión y la gravedad de
+Minecraft. El máximo del prototipo es 0,22 bloques/tick.
+
+`DinosaurBalanceController` acepta cualquier `Mob` y su
+`DinosaurProceduralConfig`; no conoce la clase del prototipo. Cada especie
+mantiene una instancia pequeña del controlador y la llama desde
+`customServerAiStep`, conservando por entidad únicamente el estado de gracia
+y la última evaluación.
+
+La regla del polígono estático se pausa mientras la actividad de marcha
+supera el umbral configurado. Un bípedo en movimiento pasa gran parte del
+ciclo sobre una sola pata y necesita un modelo dinámico de momento/capture
+point, no una regla estática que produciría caídas falsas. La geometría sigue
+calculándose y las patas en vuelo continúan excluidas de la pendiente y del
+apoyo.
+
+`NoAI` es una congelación especial de Minecraft: `LivingEntity` deja de
+ejecutar `travel`, que también integra gravedad y movimiento impuesto. Por
+eso el análisis visual sigue disponible con `NoAI`, pero el contador y el
+impulso autoritativo no progresan hasta volver a habilitar la entidad.
+
+En servidor se sondea una vez cada dos ticks y se reparte el trabajo usando
+el ID de entidad. Para cuatro patas la envolvente recibe como máximo 32
+vértices; su coste es despreciable frente a las consultas de colisión y no
+crece con el tamaño visual del dinosaurio, sino con su número de patas.
 
 ## Rig inspeccionado
 
@@ -150,6 +215,9 @@ Con F3 visible se muestran:
 - inclinación aplicada y pendiente medida por separado;
 - conteos dinámicos `IK/total` y `ground/total`;
 - fase y actividad de marcha.
+- centro de masas y contorno de apoyo;
+- margen firmado, número de patas sustentantes y dirección de caída cuando
+  la postura es inestable.
 
 Los colores se derivan del ID de pata, por lo que también funcionan con
 especies que no tengan exactamente cuatro extremidades.

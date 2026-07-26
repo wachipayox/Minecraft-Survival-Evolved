@@ -7,6 +7,8 @@ import com.geckolib.animation.AnimationController;
 import com.geckolib.animation.RawAnimation;
 import com.geckolib.util.GeckoLibUtil;
 import com.wachi.mse.entity.dinosaur.config.DinosaurProceduralConfig;
+import com.wachi.mse.entity.dinosaur.procedural.DinosaurBalanceController;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -27,6 +29,8 @@ public final class PrototypeDinosaurEntity
             RawAnimation.begin().thenLoop("animation.prototype_dinosaur.walk");
 
     private final AnimatableInstanceCache animationCache = GeckoLibUtil.createInstanceCache(this);
+    private final DinosaurBalanceController balanceController =
+            new DinosaurBalanceController();
 
     public PrototypeDinosaurEntity(EntityType<? extends PrototypeDinosaurEntity> entityType, Level level) {
         super(entityType, level);
@@ -45,6 +49,20 @@ public final class PrototypeDinosaurEntity
         this.goalSelector.addGoal(5, new RandomStrollGoal(this, 0.8));
         this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 12.0F));
         this.goalSelector.addGoal(7, new RandomLookAroundGoal(this));
+    }
+
+    @Override
+    protected void customServerAiStep(ServerLevel level) {
+        super.customServerAiStep(level);
+        this.balanceController.tick(this, this.proceduralConfig());
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        if (!this.level().isClientSide() && this.isNoAi()) {
+            this.balanceController.reset();
+        }
     }
 
     @Override

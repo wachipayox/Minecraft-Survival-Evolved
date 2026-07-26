@@ -53,6 +53,10 @@ public record DinosaurLegRig(
         return this.kneeHeight - this.footPivotHeight;
     }
 
+    public double totalLength() {
+        return this.upperLength() + this.lowerLength();
+    }
+
     /**
      * GeckoLib negates Blockbench/Bedrock X while baking geometry and pivots.
      */

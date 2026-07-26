@@ -31,7 +31,8 @@ public final class DinosaurLegIkSolver {
             float bodyPitchRadians,
             float bodyRollRadians) {
         boolean hasConstraint = samples.stream().anyMatch(
-                sample -> sample.valid() && sample.supportWeight() > EPSILON);
+                sample -> sample.supportWeight() > EPSILON
+                        && canEverReachWithBodyCorrection(config, sample));
         if (!hasConstraint || config.maxBodyVerticalCorrection() <= EPSILON) {
             return 0.0F;
         }
@@ -225,7 +226,7 @@ public final class DinosaurLegIkSolver {
                 targetHeight,
                 (float) solvedFootWorld.y,
                 (float) (solvedReach / (upperLength + lowerLength)),
-                planted,
+                planted && reachable,
                 reachable);
     }
 
@@ -237,7 +238,8 @@ public final class DinosaurLegIkSolver {
             double bodyTranslationY) {
         double cost = bodyTranslationY * bodyTranslationY * BODY_HEIGHT_NEUTRAL_BIAS;
         for (DinosaurTerrainSample sample : samples) {
-            if (!sample.valid() || sample.supportWeight() <= EPSILON) {
+            if (sample.supportWeight() <= EPSILON
+                    || !canEverReachWithBodyCorrection(config, sample)) {
                 continue;
             }
 
@@ -259,6 +261,29 @@ public final class DinosaurLegIkSolver {
             cost += violation * violation * sample.supportWeight();
         }
         return cost;
+    }
+
+    /**
+     * Distant observed ground may describe the terrain slope but must not pull
+     * the shared body height away from feet that can genuinely support the
+     * animal. This inexpensive interval test asks whether some allowed body
+     * correction could place the target inside the leg's reach.
+     */
+    private static boolean canEverReachWithBodyCorrection(
+            DinosaurProceduralConfig config,
+            DinosaurTerrainSample sample) {
+        if (!sample.valid()) {
+            return false;
+        }
+        DinosaurLegRig rig = config.leg(sample.legId());
+        double verticalReachAtNeutralBody = rig.hipHeight()
+                - stanceFootPivotHeight(config, rig, sample);
+        double minimumPossibleReach = verticalReachAtNeutralBody
+                - config.maxBodyVerticalCorrection();
+        double maximumPossibleReach = verticalReachAtNeutralBody
+                + config.maxBodyVerticalCorrection();
+        return maximumPossibleReach >= minimumReach(config, rig) - EPSILON
+                && minimumPossibleReach <= maximumReach(config, rig) + EPSILON;
     }
 
     private static Vec3 hipPosition(DinosaurLegRig rig) {

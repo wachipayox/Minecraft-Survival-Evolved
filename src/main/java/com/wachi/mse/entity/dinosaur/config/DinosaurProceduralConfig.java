@@ -8,6 +8,7 @@ public record DinosaurProceduralConfig(
         DinosaurBoneNames bones,
         List<DinosaurLegRig> legs,
         GaitConfig gait,
+        DinosaurStabilityConfig stability,
         double bodyPivotHeight,
         double footContactHeight,
         double contactPatchRadius,
@@ -81,6 +82,16 @@ public record DinosaurProceduralConfig(
                             -1.0F,
                             0.25F)),
             new GaitConfig(12.8F, 0.6F, 0.12F, 0.04F),
+            new DinosaurStabilityConfig(
+                    0.0,
+                    0.0,
+                    2.0 / 16.0,
+                    1.0,
+                    1.0 / 16.0,
+                    8,
+                    0.12F,
+                    0.035,
+                    0.22),
             14.0 / 16.0,
             0.0,
             2.0 / 16.0,
@@ -105,6 +116,7 @@ public record DinosaurProceduralConfig(
                 legs.stream().map(DinosaurLegRig::id).collect(Collectors.toSet());
         if (bones == null
                 || gait == null
+                || stability == null
                 || legs.size() < 2
                 || legIds.size() != legs.size()
                 || bodyPivotHeight <= footContactHeight

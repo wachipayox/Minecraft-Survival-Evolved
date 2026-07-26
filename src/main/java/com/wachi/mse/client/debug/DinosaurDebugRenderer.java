@@ -3,7 +3,9 @@ package com.wachi.mse.client.debug;
 import com.wachi.mse.entity.dinosaur.ProceduralDinosaur;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurLegPose;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurProceduralPose;
+import com.wachi.mse.entity.dinosaur.procedural.DinosaurStabilityAssessment;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurTerrainSample;
+import java.util.List;
 import java.util.Locale;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.culling.Frustum;
@@ -107,6 +109,7 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
                             .withScale(0.2F));
         }
 
+        emitStabilityGizmos(pose);
         Gizmos.billboardText(
                 String.format(
                         Locale.ROOT,
@@ -135,9 +138,50 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
                 TextGizmo.Style
                         .forColorAndCentered(0xFF80D8FF)
                         .withScale(0.2F));
+        DinosaurStabilityAssessment stability = pose.stability();
+        Gizmos.billboardText(
+                String.format(
+                        Locale.ROOT,
+                        "balance %s / margin %s / support %d/%d",
+                        stabilityLabel(stability),
+                        stability.evaluable()
+                                ? String.format(
+                                        Locale.ROOT,
+                                        "%+.2f",
+                                        stability.signedMarginBlocks())
+                                : "--",
+                        stability.supportingLegCount(),
+                        pose.legs().size()),
+                pose.origin().add(0.0, dinosaur.getBbHeight() - 0.04, 0.0),
+                TextGizmo.Style
+                        .forColorAndCentered(stabilityColor(stability))
+                        .withScale(0.2F));
+    }
+
+    private static void emitStabilityGizmos(DinosaurProceduralPose pose) {
+        DinosaurStabilityAssessment stability = pose.stability();
+        List<Vec3> hull = stability.supportHull();
+        for (int index = 0; index < hull.size(); index++) {
+            Vec3 start = hull.get(index).add(0.0, 0.025, 0.0);
+            Vec3 end = hull.get((index + 1) % hull.size()).add(0.0, 0.025, 0.0);
+            Gizmos.line(start, end, stabilityColor(stability), 2.0F);
+        }
+
+        Vec3 center = stability.centerOfMassWorld().add(0.0, 0.08, 0.0);
+        Gizmos.point(center, stabilityColor(stability), POINT_SIZE);
+        if (stability.requiresRecovery()) {
+            Gizmos.line(
+                    center,
+                    center.add(stability.fallDirectionWorld().scale(0.75)),
+                    0xFFFF3333,
+                    3.0F);
+        }
     }
 
     private static int poseColor(DinosaurProceduralPose pose) {
+        if (pose.stability().requiresRecovery()) {
+            return 0xFFFF5555;
+        }
         if (pose.fullyResolved() && pose.validSampleCount() == pose.samples().size()) {
             return 0xFF55FF55;
         }
@@ -160,5 +204,19 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
             return 0xFFAAAAAA;
         }
         return sample.valid() ? 0xFFFFFFFF : 0xFFFF5555;
+    }
+
+    private static String stabilityLabel(DinosaurStabilityAssessment stability) {
+        if (!stability.evaluable()) {
+            return "unresolved";
+        }
+        return stability.stable() ? "stable" : "unstable";
+    }
+
+    private static int stabilityColor(DinosaurStabilityAssessment stability) {
+        if (!stability.evaluable()) {
+            return 0xFFFFAA00;
+        }
+        return stability.stable() ? 0xFF55FF55 : 0xFFFF5555;
     }
 }

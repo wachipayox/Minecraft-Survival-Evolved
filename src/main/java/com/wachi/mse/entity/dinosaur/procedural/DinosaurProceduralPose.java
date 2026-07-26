@@ -24,7 +24,8 @@ public record DinosaurProceduralPose(
         boolean rollResolved,
         DinosaurGaitState gait,
         List<DinosaurTerrainSample> samples,
-        List<DinosaurLegPose> legs) {
+        List<DinosaurLegPose> legs,
+        DinosaurStabilityAssessment stability) {
     public DinosaurProceduralPose {
         samples = List.copyOf(samples);
         legs = List.copyOf(legs);
@@ -87,6 +88,7 @@ public record DinosaurProceduralPose(
                 this.rollResolved,
                 this.gait,
                 this.samples,
-                smoothedLegs);
+                smoothedLegs,
+                this.stability);
     }
 }

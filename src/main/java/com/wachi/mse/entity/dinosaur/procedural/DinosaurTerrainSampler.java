@@ -92,6 +92,7 @@ public final class DinosaurTerrainSampler {
         List<DinosaurTerrainSample> samples = new ArrayList<>(config.legs().size());
 
         for (DinosaurLegRig leg : config.legs()) {
+            double observationBelow = observationDepthBelow(config, leg);
             GroundHit hit = findBestGroundHit(
                     level,
                     collisionContext,
@@ -102,14 +103,15 @@ public final class DinosaurTerrainSampler {
                     sinYaw,
                     cosYaw,
                     config.sampleAbove(),
-                    config.sampleBelow());
+                    observationBelow);
             boolean valid = hit != null;
             Vec3 position;
             if (valid) {
                 position = hit.position();
             } else {
-                // Unsupported feet still describe a bounded drop. This makes
-                // a ledge influence the pose without inventing distant ground.
+                // Keep the old bounded visual drop when no floor exists at
+                // all. The farther awareness range is only allowed to affect
+                // the pose when it finds real collision geometry.
                 Vec3 nominalPosition = modelPointToWorld(
                         origin,
                         leg.modelXOffset(),
@@ -166,6 +168,12 @@ public final class DinosaurTerrainSampler {
                 bodyTranslationY,
                 bodyPitch,
                 bodyRoll);
+        DinosaurStabilityAssessment stability = DinosaurStabilitySolver.assess(
+                config,
+                origin,
+                bodyYawDegrees,
+                samples,
+                legs);
 
         return new DinosaurProceduralPose(
                 origin,
@@ -182,7 +190,32 @@ public final class DinosaurTerrainSampler {
                 slope.rollResolved(),
                 gait,
                 samples,
-                legs);
+                legs,
+                stability);
+    }
+
+    /**
+     * A leg first gets its complete reachable vertical range, including the
+     * shared body-height correction. It then observes an additional
+     * species-configured number of its own lengths. This scales naturally for
+     * short, long and asymmetric legs without treating distant ground as
+     * reachable support.
+     */
+    private static double observationDepthBelow(
+            DinosaurProceduralConfig config,
+            DinosaurLegRig leg) {
+        double maximumReach =
+                leg.totalLength() * config.maxLegReachFraction();
+        double physicallyReachableDrop = Math.max(
+                0.0,
+                maximumReach
+                        - leg.hipHeight()
+                        + leg.footPivotHeight()
+                        + config.maxBodyVerticalCorrection());
+        double adaptiveDepth = physicallyReachableDrop
+                + leg.totalLength()
+                        * config.stability().awarenessBeyondReachLegLengths();
+        return Math.max(config.sampleBelow(), adaptiveDepth);
     }
 
     private static GroundHit findBestGroundHit(

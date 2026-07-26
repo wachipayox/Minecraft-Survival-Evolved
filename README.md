@@ -18,8 +18,11 @@ adaptación visual al terreno. Se puede invocar con:
 /summon mc_evolved:prototype_dinosaur ~ ~ ~
 ```
 
-Al mostrar F3 se visualizan sus cuatro muestras de apoyo, el desnivel de cada
-una y los valores suavizados de pitch/roll.
+Al mostrar F3 se visualizan sus muestras de apoyo, el desnivel de cada una,
+los valores suavizados de pitch/roll y el polígono de estabilidad. Si el
+centro de masas queda fuera de apoyos alcanzables durante el tiempo de
+recuperación, el servidor desplaza al dinosaurio fuera del borde para que la
+gravedad normal complete la caída.
 
 ![Dinosaurio prototipo](docs/images/prototype_dinosaur.png)
 
