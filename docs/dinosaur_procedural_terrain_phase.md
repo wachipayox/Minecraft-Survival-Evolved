@@ -27,16 +27,22 @@ Cada pata se resuelve en tres dimensiones:
 - el pie contrarrota cuerpo, cadera y rodilla para conservar la planta
   horizontal.
 
-No se escala ningún hueso. «Estirar» una pata significa abrir la rodilla
-hasta casi la suma de ambos segmentos. El alcance útil del prototipo está
-entre el 35 % y el 98,5 %, evitando tanto el plegado degenerado como la
-singularidad de una cadena perfectamente recta.
+Con terreno real, «estirar» una pata significa abrir la rodilla sin escalar
+la anatomía. El alcance útil del prototipo está entre el 35 % y el 98,5 %,
+evitando tanto el plegado degenerado como la singularidad de una cadena
+perfectamente recta.
 
-Ese 98,5 % se reserva para contactos reales. Cuando una sonda no encuentra
-ningún suelo, la pata usa un límite separado del 99,95 %: cae visualmente casi
-recta hasta su altura mínima sin introducir una singularidad exacta en la
-rodilla. El estado de contacto acompaña a la pose suavizada y también se
-conserva al compensar el bob vertical de la animación.
+Cuando una sonda no encuentra ningún suelo, el objetivo inferior puede quedar
+por debajo de la suma física de ambos segmentos. En ese único caso la cadena
+usa un límite lógico separado del 99,999 % y una escala visual Y acotada por
+especie; el prototipo permite hasta 2,25. Se escala desde la cadera para
+mantener unidos ambos segmentos y el pie aplica la escala inversa local para
+no engordar verticalmente. Esto permite que el pie llegue al mínimo visual sin
+convertir el vacío en apoyo lógico: `reachable()` continúa siendo falso.
+
+La escala entra en el mismo suavizado que las rotaciones. El estado de
+contacto acompaña a la pose y se conserva al compensar el bob vertical de la
+animación.
 
 El cálculo vive en el paquete común
 `com.wachi.mse.entity.dinosaur.procedural`. No consulta IA, navegación,
@@ -128,7 +134,8 @@ Una pata sin ninguna colisión usa directamente ese objetivo inferior, incluso
 si el reloj de marcha la habría puesto en fase de vuelo. Así la extremidad se
 extiende hasta la misma altura visual que tendría al encontrar un bloque justo
 en el límite mínimo, en lugar de recogerse mientras el animal ya pierde el
-apoyo.
+apoyo. Si el objetivo supera la longitud ósea, la extensión visual cubre la
+diferencia dentro del máximo configurado para esa especie.
 
 El solver busca numéricamente la traslación Y que minimiza las violaciones de
 alcance de todas las patas realmente apoyadas. Después resuelve cada cadena
@@ -171,10 +178,11 @@ La aceleración no simula un ragdoll ni sustituye las colisiones. Su única
 función es sacar de forma sostenida el `AABB` principal del bloque que lo
 retenía; a partir de ahí actúan el movimiento, la colisión y la gravedad de
 Minecraft. En el prototipo el objetivo aumenta 0,008 bloques/tick de velocidad
-por tick y queda limitado a 0,075 bloques/tick. El controlador restaura cada
-tick la proyección perdida por fricción en vez de reiniciar la rampa, y usa
-`Entity.push` para que el servidor marque y sincronice el cambio externo de
-velocidad. Una velocidad realmente contraria se corrige de forma acotada.
+por tick y queda limitado a 0,075 bloques/tick. El controlador conserva por
+separado esta contribución, predice cuánto queda tras la fricción del bloque y
+restaura solo la diferencia. Después usa `Entity.push` para sumarla al vector
+que ya produjo la navegación y para que el servidor sincronice el cambio
+externo de velocidad.
 
 `DinosaurBalanceController` acepta cualquier `Mob` y su
 `DinosaurProceduralConfig`; no conoce la clase del prototipo. Cada especie
@@ -182,22 +190,21 @@ mantiene una instancia pequeña del controlador y la llama desde
 `customServerAiStep`, conservando por entidad únicamente el estado de gracia
 y la última evaluación.
 
-La regla del polígono estático se pausa mientras la actividad de marcha
-supera el umbral configurado, que en el prototipo es 0,02 y por tanto exige
-que la animación esté prácticamente detenida. Un bípedo en movimiento pasa gran parte del
-ciclo sobre una sola pata y necesita un modelo dinámico de momento/capture
-point, no una regla estática que produciría caídas falsas. La geometría sigue
-calculándose y las patas en vuelo continúan excluidas de la pendiente y del
-apoyo. Además del reloj visual, una ruta de navegación o un destino pendiente
-de `MoveControl` cuentan como marcha y evitan iniciar la caída estática.
+La inestabilidad causada únicamente por una fase normal de marcha se pausa
+mientras la actividad supera el umbral configurado o existe una ruta. Un
+bípedo en movimiento pasa gran parte del ciclo sobre una sola pata y necesita
+un modelo dinámico de momento/capture point, no una regla estática que
+produciría caídas falsas. Sin embargo, esa excepción desaparece si al menos
+una pata no encuentra terreno o no puede alcanzarlo: navegar ya no vuelve al
+dinosaurio inmune a un borde realmente inseguro.
 
 Una caída que ya superó la gracia permanece enclavada hasta recuperar un
 polígono estable. Congela la dirección hacia el centro ponderado de las patas
-realmente sin apoyo, cancela la ruta y pone `MoveControl` en espera. Al dejar
-el suelo conserva el empuje durante 16 ticks como máximo, suficiente para que
-el borde de la hitbox no alterne entre apoyo y aire. De este modo la IA no
-puede sobrescribir el empuje después en el mismo tick y el ciclo de pasos no
-hace oscilar el lado de caída.
+realmente sin apoyo, pero no cancela la ruta ni pone `MoveControl` en espera.
+Mientras siga en suelo vuelve a evaluar el soporte cada dos ticks, de modo que
+puede recuperar estabilidad por su propio movimiento. Al dejar el suelo
+conserva el empuje durante 16 ticks como máximo, suficiente para que el borde
+de la hitbox no alterne entre apoyo y aire.
 
 `NoAI` es una congelación especial de Minecraft: `LivingEntity` deja de
 ejecutar `travel`, que también integra gravedad y movimiento impuesto. Por
@@ -263,6 +270,10 @@ especies que no tengan exactamente cuatro extremidades.
   GeckoLib;
 - una pata sin contacto usa su extensión casi recta incluso durante la
   compensación de la animación base;
+- la extensión visual hasta el objetivo inferior no modifica `reachable()` ni
+  el polígono de soporte;
+- una ruta activa solo exime fases de paso normales: la pérdida real de terreno
+  sigue generando un vector aditivo de caída;
 - el modelo fuente conserva sus 23 huesos y no fue reexportado;
 - no se usa `onGround()` ni estado de IA para calcular la pose.
 

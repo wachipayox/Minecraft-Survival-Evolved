@@ -253,6 +253,12 @@ public final class DinosaurLegIkSolver {
                 bodyTranslationY,
                 bodyPitchRadians,
                 bodyRollRadians);
+        float visualStretchScale = terrainContact
+                ? 1.0F
+                : (float) Mth.clamp(
+                        requestedReach / solvedReach,
+                        1.0,
+                        config.maxUnsupportedLegStretchScale());
 
         return new DinosaurLegPose(
                 rig.id(),
@@ -262,6 +268,7 @@ public final class DinosaurLegIkSolver {
                 targetHeight,
                 (float) solvedFootWorld.y,
                 (float) (solvedReach / (upperLength + lowerLength)),
+                visualStretchScale,
                 terrainContact,
                 planted && reachable,
                 reachable);

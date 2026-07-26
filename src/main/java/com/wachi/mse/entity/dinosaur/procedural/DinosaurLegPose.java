@@ -11,6 +11,7 @@ public record DinosaurLegPose(
         float targetFootHeightOffset,
         float solvedFootHeightOffset,
         float extensionFraction,
+        float visualStretchScale,
         boolean terrainContact,
         boolean planted,
         boolean reachable) {
@@ -26,6 +27,22 @@ public record DinosaurLegPose(
                 this.targetFootHeightOffset,
                 this.solvedFootHeightOffset,
                 this.extensionFraction,
+                this.visualStretchScale,
+                this.terrainContact,
+                this.planted,
+                this.reachable);
+    }
+
+    public DinosaurLegPose withVisualStretchScale(float stretchScale) {
+        return new DinosaurLegPose(
+                this.legId,
+                this.hipRotation,
+                this.kneeRotation,
+                this.footRotation,
+                this.targetFootHeightOffset,
+                this.solvedFootHeightOffset,
+                this.extensionFraction,
+                stretchScale,
                 this.terrainContact,
                 this.planted,
                 this.reachable);

@@ -9,14 +9,13 @@ import net.minecraft.world.phys.Vec3;
  * Authoritative ledge recovery for a procedural dinosaur.
  *
  * <p>The terrain probe runs every other server tick, staggered by entity ID.
- * Once a stationary centre of mass remains outside the support polygon for
- * the configured grace period, a bounded horizontal acceleration moves the
- * main collision box off the ledge and lets normal Minecraft gravity take
- * over. The desired push speed ramps up, is restored after ground friction,
- * and remains latched briefly after becoming airborne, so the fall does not
- * alternate between acceleration and pauses at the collision-box boundary.
- * Dynamic gait balance is deliberately left to locomotion rather than
- * applying a static-polygon rule while a foot is in swing.</p>
+ * Once the centre of mass remains outside the support polygon for the
+ * configured grace period, a bounded horizontal contribution moves the main
+ * collision box off the ledge and lets normal Minecraft gravity take over.
+ * Ordinary swing phases remain the responsibility of locomotion, but actual
+ * missing or unreachable terrain is evaluated even while navigating. The
+ * contribution is reconstructed after friction and added to navigation
+ * velocity rather than replacing the route's movement.</p>
  */
 public final class DinosaurBalanceController {
     private static final int SAMPLE_INTERVAL_TICKS = 2;
@@ -26,7 +25,9 @@ public final class DinosaurBalanceController {
     private int unstableTicks;
     private DinosaurStabilityAssessment lastAssessment;
     private Vec3 committedFallDirection = Vec3.ZERO;
-    private double committedFallPushSpeed;
+    private double targetFallPushSpeed;
+    private double appliedFallPushSpeed;
+    private double fallVelocityRetention;
     private boolean becameAirborne;
     private int airborneAssistTicksRemaining;
 
@@ -81,7 +82,9 @@ public final class DinosaurBalanceController {
         this.unstableTicks = 0;
         this.lastAssessment = null;
         this.committedFallDirection = Vec3.ZERO;
-        this.committedFallPushSpeed = 0.0;
+        this.targetFallPushSpeed = 0.0;
+        this.appliedFallPushSpeed = 0.0;
+        this.fallVelocityRetention = 0.0;
         this.becameAirborne = false;
         this.airborneAssistTicksRemaining = 0;
     }
@@ -91,19 +94,7 @@ public final class DinosaurBalanceController {
             DinosaurProceduralPose pose,
             DinosaurStabilityConfig config) {
         DinosaurStabilityAssessment assessment = pose.stability();
-        boolean activelyWalking =
-                pose.gait().activity() > config.maximumActivityForStaticBalance()
-                        || dinosaur.getNavigation().isInProgress()
-                        || dinosaur.getMoveControl().hasWanted();
-        if (!assessment.requiresRecovery()
-                || assessment.fallDirectionWorld().lengthSqr()
-                        <= DIRECTION_EPSILON) {
-            this.state = State.STABLE;
-            this.unstableTicks = 0;
-            this.committedFallDirection = Vec3.ZERO;
-            return;
-        }
-        if (activelyWalking && this.state != State.FALLING) {
+        if (!requiresRecovery(dinosaur, pose, config)) {
             this.state = State.STABLE;
             this.unstableTicks = 0;
             this.committedFallDirection = Vec3.ZERO;
@@ -118,8 +109,6 @@ public final class DinosaurBalanceController {
                 this.beginFall(
                         assessment.fallDirectionWorld().normalize(),
                         config);
-                dinosaur.getNavigation().stop();
-                dinosaur.getMoveControl().setWait();
             }
         } else {
             this.state = State.RECOVERING;
@@ -131,7 +120,9 @@ public final class DinosaurBalanceController {
             DinosaurStabilityConfig config) {
         this.state = State.FALLING;
         this.committedFallDirection = direction;
-        this.committedFallPushSpeed = 0.0;
+        this.targetFallPushSpeed = 0.0;
+        this.appliedFallPushSpeed = 0.0;
+        this.fallVelocityRetention = 0.0;
         this.becameAirborne = false;
         this.airborneAssistTicksRemaining = config.airborneFallAssistTicks();
     }
@@ -140,17 +131,31 @@ public final class DinosaurBalanceController {
             Mob dinosaur,
             DinosaurProceduralConfig config) {
         DinosaurStabilityConfig stability = config.stability();
-        dinosaur.getNavigation().stop();
-        dinosaur.getMoveControl().setWait();
-        this.committedFallPushSpeed = Math.min(
+        if (dinosaur.onGround()
+                && (dinosaur.tickCount + dinosaur.getId())
+                        % SAMPLE_INTERVAL_TICKS == 0) {
+            DinosaurProceduralPose pose =
+                    DinosaurTerrainSampler.sampleAuthoritative(dinosaur, config);
+            this.lastAssessment = pose.stability();
+            if (!requiresRecovery(dinosaur, pose, stability)) {
+                this.reset();
+                return;
+            }
+        }
+
+        double retainedFallSpeed =
+                this.appliedFallPushSpeed * this.fallVelocityRetention;
+        this.targetFallPushSpeed = Math.min(
                 stability.maximumFallHorizontalSpeed(),
-                this.committedFallPushSpeed
+                this.targetFallPushSpeed
                         + stability.fallAccelerationPerTick());
-        applyFallVelocity(
+        applyFallVelocityContribution(
                 dinosaur,
-                stability,
                 this.committedFallDirection,
-                this.committedFallPushSpeed);
+                this.targetFallPushSpeed - retainedFallSpeed);
+        this.appliedFallPushSpeed = this.targetFallPushSpeed;
+        this.fallVelocityRetention =
+                horizontalVelocityRetention(dinosaur);
 
         if (!dinosaur.onGround()) {
             this.becameAirborne = true;
@@ -165,7 +170,7 @@ public final class DinosaurBalanceController {
             DinosaurProceduralPose pose =
                     DinosaurTerrainSampler.sampleAuthoritative(dinosaur, config);
             this.lastAssessment = pose.stability();
-            if (!this.lastAssessment.requiresRecovery()) {
+            if (!requiresRecovery(dinosaur, pose, stability)) {
                 this.reset();
             } else {
                 this.becameAirborne = false;
@@ -175,25 +180,57 @@ public final class DinosaurBalanceController {
         }
     }
 
-    private static void applyFallVelocity(
+    private static boolean requiresRecovery(
             Mob dinosaur,
-            DinosaurStabilityConfig config,
+            DinosaurProceduralPose pose,
+            DinosaurStabilityConfig config) {
+        DinosaurStabilityAssessment assessment = pose.stability();
+        if (!assessment.requiresRecovery()
+                || assessment.fallDirectionWorld().lengthSqr()
+                        <= DIRECTION_EPSILON) {
+            return false;
+        }
+        boolean activelyWalking =
+                pose.gait().activity() > config.maximumActivityForStaticBalance()
+                        || dinosaur.getNavigation().isInProgress()
+                        || dinosaur.getMoveControl().hasWanted();
+        return !activelyWalking || hasTerrainLoss(pose);
+    }
+
+    private static boolean hasTerrainLoss(DinosaurProceduralPose pose) {
+        for (DinosaurLegPose leg : pose.legs()) {
+            if (!leg.terrainContact() || !leg.reachable()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static double horizontalVelocityRetention(Mob dinosaur) {
+        if (!dinosaur.onGround()) {
+            return 0.91;
+        }
+        var supportPosition =
+                dinosaur.getBlockPosBelowThatAffectsMyMovement();
+        float friction = dinosaur.level()
+                .getBlockState(supportPosition)
+                .getFriction(
+                        dinosaur.level(),
+                        supportPosition,
+                        dinosaur);
+        return friction * 0.91;
+    }
+
+    private static void applyFallVelocityContribution(
+            Mob dinosaur,
             Vec3 direction,
-            double desiredSpeed) {
-        Vec3 movement = dinosaur.getDeltaMovement();
-        double speedAlongFall =
-                movement.x * direction.x + movement.z * direction.z;
-        double correction = desiredSpeed - speedAlongFall;
+            double correction) {
         if (correction <= 0.0) {
             return;
         }
-        if (speedAlongFall < 0.0) {
-            correction = Math.min(
-                    correction,
-                    config.fallAccelerationPerTick() * 2.0);
-        }
         // Entity#push also marks the velocity as externally changed, keeping
-        // client interpolation in step with the authoritative correction.
+        // client interpolation in step with the authoritative correction. It
+        // adds this contribution to navigation instead of replacing it.
         dinosaur.push(
                 direction.x * correction,
                 0.0,
