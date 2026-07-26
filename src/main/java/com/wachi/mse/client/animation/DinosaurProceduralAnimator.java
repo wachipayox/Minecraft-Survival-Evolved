@@ -122,7 +122,7 @@ public final class DinosaurProceduralAnimator {
             snapshots.get(bone.boneName()).ifPresent(snapshot -> {
                 snapshot.setRotY(
                         snapshot.getRotY()
-                                + pose.orientation().yawRadians() * bone.yawWeight());
+                                - pose.orientation().yawRadians() * bone.yawWeight());
                 snapshot.setRotX(
                         snapshot.getRotX()
                                 + pitchRelativeToTiltedBody * bone.pitchWeight());
@@ -177,7 +177,8 @@ public final class DinosaurProceduralAnimator {
                 pose.bodyTranslationYBlocks(),
                 pose.pitchRadians(),
                 pose.rollRadians(),
-                smoothedLeg.planted());
+                smoothedLeg.planted(),
+                smoothedLeg.terrainContact());
         DinosaurLegPose withAnimation = DinosaurLegIkSolver.solveTarget(
                 config,
                 rig,
@@ -185,7 +186,8 @@ public final class DinosaurProceduralAnimator {
                 pose.bodyTranslationYBlocks() + animationBodyY,
                 pose.pitchRadians(),
                 pose.rollRadians(),
-                smoothedLeg.planted());
+                smoothedLeg.planted(),
+                smoothedLeg.terrainContact());
         return smoothedLeg.withRotations(
                 addRotationDelta(
                         smoothedLeg.hipRotation(),

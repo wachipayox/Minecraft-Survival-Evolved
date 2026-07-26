@@ -19,6 +19,7 @@ public record DinosaurProceduralConfig(
         double swingFootLift,
         float minLegReachFraction,
         float maxLegReachFraction,
+        float unsupportedLegReachFraction,
         float maxPitchRadians,
         float maxRollRadians,
         float slopeDeadzoneRadians,
@@ -91,8 +92,9 @@ public record DinosaurProceduralConfig(
                     1.0 / 16.0,
                     8,
                     0.02F,
-                    0.006,
-                    0.055),
+                    0.008,
+                    0.075,
+                    16),
             new DinosaurOrientationConfig(
                     List.of(
                             new DinosaurLookBone("neck_1", 0.25F, 0.20F),
@@ -110,6 +112,8 @@ public record DinosaurProceduralConfig(
                     30.0F,
                     0.001,
                     0.35,
+                    0.8,
+                    4.0,
                     12.0F),
             14.0 / 16.0,
             0.0,
@@ -120,6 +124,7 @@ public record DinosaurProceduralConfig(
             2.5 / 16.0,
             0.35F,
             0.985F,
+            0.9995F,
             (float) Math.toRadians(35.0),
             (float) Math.toRadians(15.0),
             (float) Math.toRadians(0.5),
@@ -147,9 +152,14 @@ public record DinosaurProceduralConfig(
                 || swingFootLift < 0.0) {
             throw new IllegalArgumentException("Procedural terrain geometry values are invalid");
         }
-        if (minLegReachFraction <= 0.0F
+        if (!Float.isFinite(minLegReachFraction)
+                || !Float.isFinite(maxLegReachFraction)
+                || !Float.isFinite(unsupportedLegReachFraction)
+                || minLegReachFraction <= 0.0F
                 || maxLegReachFraction >= 1.0F
-                || minLegReachFraction >= maxLegReachFraction) {
+                || minLegReachFraction >= maxLegReachFraction
+                || unsupportedLegReachFraction < maxLegReachFraction
+                || unsupportedLegReachFraction >= 1.0F) {
             throw new IllegalArgumentException("Leg reach fractions are invalid");
         }
         if (maxPitchRadians < 0.0F || maxRollRadians < 0.0F) {

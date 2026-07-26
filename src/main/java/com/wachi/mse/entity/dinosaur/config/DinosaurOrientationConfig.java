@@ -26,6 +26,8 @@ public record DinosaurOrientationConfig(
         float steeringDegreesPerBlock,
         double minimumTurningDistance,
         double lookTurnSpeedModifier,
+        double pathLookAheadRadiusMultiplier,
+        double maximumPathLookAheadBlocks,
         float visualSmoothingResponsePerSecond) {
     private static final float WEIGHT_EPSILON = 1.0E-3F;
 
@@ -48,7 +50,11 @@ public record DinosaurOrientationConfig(
             throw new IllegalArgumentException(
                     "Look bones must be unique and yaw/pitch weights must each total one");
         }
-        if (maxNeckYawDegrees <= 0.0F
+        if (!Double.isFinite(minimumTurningDistance)
+                || !Double.isFinite(lookTurnSpeedModifier)
+                || !Double.isFinite(pathLookAheadRadiusMultiplier)
+                || !Double.isFinite(maximumPathLookAheadBlocks)
+                || maxNeckYawDegrees <= 0.0F
                 || maxNeckYawDegrees > 180.0F
                 || bodyTurnStopYawDegrees < 0.0F
                 || bodyTurnStopYawDegrees >= bodyTurnStartYawDegrees
@@ -63,8 +69,26 @@ public record DinosaurOrientationConfig(
                 || minimumTurningDistance < 0.0
                 || lookTurnSpeedModifier <= 0.0
                 || lookTurnSpeedModifier > 1.0
+                || pathLookAheadRadiusMultiplier <= 0.0
+                || maximumPathLookAheadBlocks <= 0.0
                 || visualSmoothingResponsePerSecond <= 0.0F) {
             throw new IllegalArgumentException("Dinosaur orientation values are invalid");
         }
+    }
+
+    /**
+     * Smallest arc radius allowed at the supplied horizontal speed after both
+     * angular constraints have been applied.
+     */
+    public double turningRadiusBlocks(double speedBlocksPerTick) {
+        if (speedBlocksPerTick <= 0.0) {
+            return 0.0;
+        }
+        double degreesPerTick = Math.min(
+                this.maxBodyYawChangeDegreesPerTick,
+                speedBlocksPerTick * this.steeringDegreesPerBlock);
+        return degreesPerTick <= 0.0
+                ? 0.0
+                : speedBlocksPerTick / Math.toRadians(degreesPerTick);
     }
 }

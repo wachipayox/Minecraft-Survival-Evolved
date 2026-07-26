@@ -46,6 +46,23 @@ La navegación tiene prioridad. Mientras hay una ruta activa no se crea una
 segunda maniobra de mirada: el `MoveControl` ya curva el cuerpo hacia el
 siguiente nodo, y el cuello sigue al objetivo dentro de sus límites.
 
+## Navegación compatible con el radio de giro
+
+`DinosaurGroundPathNavigation` conserva la evaluación vanilla de colisiones,
+escalones, puertas y peligros, pero usa un `PathFinder` cuyo coste añade la
+longitud aproximada del arco necesario para cambiar de rumbo. También compara
+el primer tramo con el yaw corporal actual. De ese modo A* prefiere accesos
+largos y suaves frente a zigzags o cambios bruscos que el animal no puede
+seguir físicamente.
+
+Durante el seguimiento se usa un objetivo anticipado sobre varios nodos. La
+distancia de anticipación deriva del radio de giro de la especie y de la
+velocidad solicitada. El objetivo solo sustituye al nodo exacto si un barrido
+de la hitbox confirma colisión libre y suelo continuo; en una esquina no
+segura se conserva el comportamiento vanilla. Al acercarse a un rumbo de 90
+grados, el avance baja progresivamente hasta la velocidad de maniobra, pero
+nunca se detiene para pivotar.
+
 ## Configuración por especie
 
 `DinosaurOrientationConfig` pertenece a `DinosaurProceduralConfig`; no
@@ -60,6 +77,7 @@ contiene nombres exclusivos del prototipo. Cada especie declara:
 - curvatura máxima en grados por bloque;
 - distancia mínima necesaria para girar;
 - velocidad de la maniobra iniciada por la mirada;
+- multiplicador del radio y distancia máxima usados para anticipar la ruta;
 - respuesta del suavizado visual.
 
 Los pesos de cada eje deben sumar uno. Una especie puede tener solo cabeza,
@@ -82,6 +100,11 @@ El cliente interpola cuerpo y cabeza, calcula la diferencia relativa y la
 reparte en los snapshots de GeckoLib después de la animación base. El pitch
 cervical compensa el pequeño pitch residual del torso para que mirar al
 horizonte no duplique la inclinación del terreno.
+
+El yaw lógico mantiene el signo de Minecraft para que servidor, navegación y
+flecha de depuración coincidan. Al aplicarlo a los huesos se invierte una sola
+vez, porque el horneado Bedrock/GeckoLib usa el eje visual contrario. Esto
+evita que cuello y cabeza apunten al lado opuesto del giro corporal.
 
 `DinosaurBodyRotationControl` solo presenta el cuerpo en la dirección lógica
 cuando ha existido desplazamiento. Se ha eliminado deliberadamente el
@@ -111,7 +134,11 @@ Los pivotes y parentescos son válidos. Esta fase no modificó ni reexportó el
 - `gradlew compileJava`: correcto;
 - servidor dedicado aislado: cargó NeoForge, GeckoLib y `mc_evolved` y alcanzó
   el estado `Done`;
+- prueba dedicada por RCON: construyó un
+  `mc_evolved:prototype_dinosaur`, confirmó su UUID y cerró limpiamente;
 - la configuración valida huesos únicos y pesos normalizados;
+- A* incorpora el coste de curvatura y el seguidor comprueba cada objetivo
+  anticipado antes de omitir un nodo;
 - el código común no depende de clases de cliente;
 - no se añadió ningún Mixin porque las APIs públicas actuales son suficientes.
 

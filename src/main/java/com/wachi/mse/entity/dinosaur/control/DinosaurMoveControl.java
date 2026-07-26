@@ -53,8 +53,17 @@ public final class DinosaurMoveControl extends MoveControl {
     @Override
     public void tick() {
         captureDistanceSinceLastControlTick();
+        boolean pathMovement = this.operation == Operation.MOVE_TO;
+        float pathHeadingError = pathMovement
+                ? headingErrorTo(this.wantedX, this.wantedZ)
+                : 0.0F;
         if (this.operation != Operation.WAIT) {
             super.tick();
+            if (pathMovement) {
+                this.mob.setSpeed(
+                        this.mob.getSpeed()
+                                * pathSpeedMultiplier(pathHeadingError));
+            }
             ageLookTurnRequest();
             return;
         }
@@ -100,6 +109,29 @@ public final class DinosaurMoveControl extends MoveControl {
                 this.mob.getYRot(),
                 this.lookTurnTargetYaw,
                 this.config.maxBodyYawChangeDegreesPerTick()));
+    }
+
+    private float headingErrorTo(double targetX, double targetZ) {
+        float targetYaw = (float) (
+                Mth.atan2(targetZ - this.mob.getZ(), targetX - this.mob.getX())
+                        * 180.0F
+                        / Math.PI)
+                - 90.0F;
+        return Math.abs(Mth.wrapDegrees(targetYaw - this.mob.getYRot()));
+    }
+
+    private float pathSpeedMultiplier(float headingError) {
+        float startSlowing = this.config.bodyTurnStopYawDegrees();
+        float fullySlowed = 90.0F;
+        float progress = Mth.clamp(
+                (headingError - startSlowing) / (fullySlowed - startSlowing),
+                0.0F,
+                1.0F);
+        progress = progress * progress * (3.0F - 2.0F * progress);
+        return Mth.lerp(
+                progress,
+                1.0F,
+                (float) this.config.lookTurnSpeedModifier());
     }
 
     private float maximumYawChangeForLastDisplacement() {

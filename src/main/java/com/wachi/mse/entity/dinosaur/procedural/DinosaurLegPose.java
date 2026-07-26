@@ -11,6 +11,7 @@ public record DinosaurLegPose(
         float targetFootHeightOffset,
         float solvedFootHeightOffset,
         float extensionFraction,
+        boolean terrainContact,
         boolean planted,
         boolean reachable) {
     public DinosaurLegPose withRotations(
@@ -25,6 +26,7 @@ public record DinosaurLegPose(
                 this.targetFootHeightOffset,
                 this.solvedFootHeightOffset,
                 this.extensionFraction,
+                this.terrainContact,
                 this.planted,
                 this.reachable);
     }

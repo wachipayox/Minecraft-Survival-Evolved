@@ -10,6 +10,7 @@ import com.wachi.mse.entity.dinosaur.config.DinosaurProceduralConfig;
 import com.wachi.mse.entity.dinosaur.control.DinosaurBodyRotationControl;
 import com.wachi.mse.entity.dinosaur.control.DinosaurLookControl;
 import com.wachi.mse.entity.dinosaur.control.DinosaurMoveControl;
+import com.wachi.mse.entity.dinosaur.navigation.DinosaurGroundPathNavigation;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurBalanceController;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntityType;
@@ -21,6 +22,7 @@ import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.RandomStrollGoal;
+import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 
@@ -66,6 +68,11 @@ public final class PrototypeDinosaurEntity
     @Override
     protected BodyRotationControl createBodyControl() {
         return new DinosaurBodyRotationControl(this);
+    }
+
+    @Override
+    protected PathNavigation createNavigation(Level level) {
+        return new DinosaurGroundPathNavigation(this, level);
     }
 
     @Override

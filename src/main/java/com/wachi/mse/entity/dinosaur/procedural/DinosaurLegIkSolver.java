@@ -146,7 +146,8 @@ public final class DinosaurLegIkSolver {
                 bodyTranslationY,
                 bodyPitchRadians,
                 bodyRollRadians,
-                sample.valid() && sample.supportWeight() >= 0.95F);
+                sample.valid() && sample.supportWeight() >= 0.95F,
+                sample.valid());
     }
 
     /**
@@ -161,10 +162,39 @@ public final class DinosaurLegIkSolver {
             float bodyPitchRadians,
             float bodyRollRadians,
             boolean planted) {
+        return solveTarget(
+                config,
+                rig,
+                targetHeight,
+                bodyTranslationY,
+                bodyPitchRadians,
+                bodyRollRadians,
+                planted,
+                true);
+    }
+
+    /**
+     * Variant used when re-solving a render-smoothed leg. Unsupported legs
+     * deliberately use an almost straight reach instead of the normal
+     * anti-singularity limit reserved for planted locomotion.
+     */
+    public static DinosaurLegPose solveTarget(
+            DinosaurProceduralConfig config,
+            DinosaurLegRig rig,
+            float targetHeight,
+            float bodyTranslationY,
+            float bodyPitchRadians,
+            float bodyRollRadians,
+            boolean planted,
+            boolean terrainContact) {
         double upperLength = rig.upperLength();
         double lowerLength = rig.lowerLength();
         double minReach = minimumReach(config, rig);
-        double maxReach = maximumReach(config, rig);
+        double maxReach = maximumReach(
+                rig,
+                terrainContact
+                        ? config.maxLegReachFraction()
+                        : config.unsupportedLegReachFraction());
         Vec3 hip = hipPosition(rig);
         Vec3 target = targetInBodySpace(
                 config,
@@ -232,6 +262,7 @@ public final class DinosaurLegIkSolver {
                 targetHeight,
                 (float) solvedFootWorld.y,
                 (float) (solvedReach / (upperLength + lowerLength)),
+                terrainContact,
                 planted && reachable,
                 reachable);
     }
@@ -379,8 +410,13 @@ public final class DinosaurLegIkSolver {
     private static double maximumReach(
             DinosaurProceduralConfig config,
             DinosaurLegRig rig) {
-        return (rig.upperLength() + rig.lowerLength())
-                * config.maxLegReachFraction();
+        return maximumReach(rig, config.maxLegReachFraction());
+    }
+
+    private static double maximumReach(
+            DinosaurLegRig rig,
+            float reachFraction) {
+        return (rig.upperLength() + rig.lowerLength()) * reachFraction;
     }
 
     private static float wrapRadians(double angle) {

@@ -32,6 +32,12 @@ hasta casi la suma de ambos segmentos. El alcance útil del prototipo está
 entre el 35 % y el 98,5 %, evitando tanto el plegado degenerado como la
 singularidad de una cadena perfectamente recta.
 
+Ese 98,5 % se reserva para contactos reales. Cuando una sonda no encuentra
+ningún suelo, la pata usa un límite separado del 99,95 %: cae visualmente casi
+recta hasta su altura mínima sin introducir una singularidad exacta en la
+rodilla. El estado de contacto acompaña a la pose suavizada y también se
+conserva al compensar el bob vertical de la animación.
+
 El cálculo vive en el paquete común
 `com.wachi.mse.entity.dinosaur.procedural`. No consulta IA, navegación,
 `NoAI` ni `onGround`, por lo que `sampleAuthoritative(...)` puede reproducir
@@ -164,9 +170,11 @@ como desempate determinista.
 La aceleración no simula un ragdoll ni sustituye las colisiones. Su única
 función es sacar de forma sostenida el `AABB` principal del bloque que lo
 retenía; a partir de ahí actúan el movimiento, la colisión y la gravedad de
-Minecraft. En el prototipo suma como máximo 0,006 bloques/tick de velocidad
-por tick y deja de acelerar a 0,055 bloques/tick. No sustituye de golpe una
-velocidad contraria.
+Minecraft. En el prototipo el objetivo aumenta 0,008 bloques/tick de velocidad
+por tick y queda limitado a 0,075 bloques/tick. El controlador restaura cada
+tick la proyección perdida por fricción en vez de reiniciar la rampa, y usa
+`Entity.push` para que el servidor marque y sincronice el cambio externo de
+velocidad. Una velocidad realmente contraria se corrige de forma acotada.
 
 `DinosaurBalanceController` acepta cualquier `Mob` y su
 `DinosaurProceduralConfig`; no conoce la clase del prototipo. Cada especie
@@ -184,11 +192,12 @@ apoyo. Además del reloj visual, una ruta de navegación o un destino pendiente
 de `MoveControl` cuentan como marcha y evitan iniciar la caída estática.
 
 Una caída que ya superó la gracia permanece enclavada hasta recuperar un
-polígono estable o abandonar el suelo. En ese momento congela la dirección
-hacia el centro ponderado de las patas realmente sin apoyo, cancela la ruta y
-pone `MoveControl` en espera. De este modo la IA no puede sobrescribir el
-empuje después en el mismo tick y el ciclo de pasos no hace oscilar el lado de
-caída.
+polígono estable. Congela la dirección hacia el centro ponderado de las patas
+realmente sin apoyo, cancela la ruta y pone `MoveControl` en espera. Al dejar
+el suelo conserva el empuje durante 16 ticks como máximo, suficiente para que
+el borde de la hitbox no alterne entre apoyo y aire. De este modo la IA no
+puede sobrescribir el empuje después en el mismo tick y el ciclo de pasos no
+hace oscilar el lado de caída.
 
 `NoAI` es una congelación especial de Minecraft: `LivingEntity` deja de
 ejecutar `travel`, que también integra gravedad y movimiento impuesto. Por
@@ -252,8 +261,10 @@ especies que no tengan exactamente cuatro extremidades.
 - solver, muestreo y configuración no importan clases de cliente;
 - la X de Blockbench se convierte explícitamente a la X horneada por
   GeckoLib;
+- una pata sin contacto usa su extensión casi recta incluso durante la
+  compensación de la animación base;
 - el modelo fuente conserva sus 23 huesos y no fue reexportado;
 - no se usa `onGround()` ni estado de IA para calcular la pose.
 
-La distribución de mirada entre cuello y cabeza y el avance horizontal de
-cada paso permanecen para fases posteriores.
+El avance horizontal individual de cada paso permanece para una fase
+posterior.

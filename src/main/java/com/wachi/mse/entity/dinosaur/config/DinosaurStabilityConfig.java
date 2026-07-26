@@ -17,7 +17,8 @@ public record DinosaurStabilityConfig(
         int recoveryTicks,
         float maximumActivityForStaticBalance,
         double fallAccelerationPerTick,
-        double maximumFallHorizontalSpeed) {
+        double maximumFallHorizontalSpeed,
+        int airborneFallAssistTicks) {
     public DinosaurStabilityConfig {
         if (!Double.isFinite(centerOfMassModelX)
                 || !Double.isFinite(centerOfMassModelZ)
@@ -31,6 +32,7 @@ public record DinosaurStabilityConfig(
                 || awarenessBeyondReachLegLengths < 0.0
                 || toleratedOutsideDistance < 0.0
                 || recoveryTicks < 1
+                || airborneFallAssistTicks < 1
                 || maximumActivityForStaticBalance < 0.0F
                 || maximumActivityForStaticBalance > 1.0F
                 || fallAccelerationPerTick <= 0.0
