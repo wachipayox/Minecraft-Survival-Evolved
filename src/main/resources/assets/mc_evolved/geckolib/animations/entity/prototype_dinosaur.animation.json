@@ -7,7 +7,7 @@
       "bones": {
         "body": {
           "position": {
-            "0": {
+            "0.0": {
               "post": [
                 0,
                 0,
@@ -15,7 +15,7 @@
               ],
               "lerp_mode": "catmullrom"
             },
-            "1": {
+            "1.0": {
               "post": [
                 0,
                 0.2,
@@ -23,7 +23,7 @@
               ],
               "lerp_mode": "catmullrom"
             },
-            "2": {
+            "2.0": {
               "post": [
                 0,
                 0,
@@ -37,16 +37,11 @@
     },
     "animation.prototype_dinosaur.walk": {
       "loop": true,
-      "animation_length": 1.0000000000000002,
+      "animation_length": 1,
       "bones": {
         "body": {
           "position": {
-            "0": [
-              0,
-              0,
-              0
-            ],
-            "1": [
+            "0.0": [
               0,
               0,
               0
@@ -67,6 +62,11 @@
               0
             ],
             "0.95": [
+              0,
+              0,
+              0
+            ],
+            "1.0": [
               0,
               0,
               0

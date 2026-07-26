@@ -2,8 +2,10 @@
 
 Fecha de inspección: 2026-07-26.
 
-Estado: fase 1 completada. La entidad GeckoLib mínima y sus verificaciones se
-documentan en `dinosaur_prototype_phase.md`.
+Estado: fase 2 implementada. La entidad mínima se documenta en
+`dinosaur_prototype_phase.md` y el muestreo de terreno, pitch/roll y gizmos en
+`dinosaur_procedural_terrain_phase.md`. La puerta visual de jitter permanece
+abierta antes de añadir corrección independiente de patas.
 
 ## Estado técnico verificado
 
