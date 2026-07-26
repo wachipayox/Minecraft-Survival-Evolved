@@ -39,7 +39,9 @@ public final class DinosaurTerrainSampler {
                 Mth.lerp((double) partialTick, entity.yo, entity.getY()),
                 Mth.lerp((double) partialTick, entity.zo, entity.getZ()));
         float bodyYaw = Mth.rotLerp(partialTick, entity.yBodyRotO, entity.yBodyRot);
-        return sampleAt(entity, config, origin, bodyYaw);
+        DinosaurGaitState gait =
+                DinosaurGaitState.sampleInterpolated(entity, config, partialTick);
+        return sampleAt(entity, config, origin, bodyYaw, gait);
     }
 
     /**
@@ -49,7 +51,12 @@ public final class DinosaurTerrainSampler {
     public static DinosaurProceduralPose sampleAuthoritative(
             PrototypeDinosaurEntity entity,
             DinosaurProceduralConfig config) {
-        return sampleAt(entity, config, entity.position(), entity.yBodyRot);
+        return sampleAt(
+                entity,
+                config,
+                entity.position(),
+                entity.yBodyRot,
+                DinosaurGaitState.sampleAuthoritative(entity, config));
     }
 
     /**
@@ -61,6 +68,24 @@ public final class DinosaurTerrainSampler {
             DinosaurProceduralConfig config,
             Vec3 origin,
             float bodyYawDegrees) {
+        return sampleAt(
+                entity,
+                config,
+                origin,
+                bodyYawDegrees,
+                DinosaurGaitState.sampleAuthoritative(entity, config));
+    }
+
+    /**
+     * Deterministic core with an explicit gait state for tests and logical
+     * callers that already captured movement data.
+     */
+    public static DinosaurProceduralPose sampleAt(
+            PrototypeDinosaurEntity entity,
+            DinosaurProceduralConfig config,
+            Vec3 origin,
+            float bodyYawDegrees,
+            DinosaurGaitState gait) {
         Level level = entity.level();
         double modelYawRadians = Math.toRadians(180.0F - bodyYawDegrees);
         double sinYaw = Math.sin(modelYawRadians);
@@ -105,26 +130,32 @@ public final class DinosaurTerrainSampler {
                     probe.point(),
                     position,
                     position.y - origin.y,
-                    valid);
+                    valid,
+                    gait.supportWeight(probe.point()));
             samples.add(sample);
             byPoint.put(probe.point(), sample);
         }
 
-        double frontHeight = averageHeight(
+        double frontHeight = weightedHeight(
                 byPoint.get(SupportPoint.FRONT_LEFT),
                 byPoint.get(SupportPoint.FRONT_RIGHT));
-        double backHeight = averageHeight(
+        double backHeight = weightedHeight(
                 byPoint.get(SupportPoint.BACK_LEFT),
                 byPoint.get(SupportPoint.BACK_RIGHT));
-        double leftHeight = averageHeight(
+        double leftHeight = weightedHeight(
                 byPoint.get(SupportPoint.FRONT_LEFT),
                 byPoint.get(SupportPoint.BACK_LEFT));
-        double rightHeight = averageHeight(
+        double rightHeight = weightedHeight(
                 byPoint.get(SupportPoint.FRONT_RIGHT),
                 byPoint.get(SupportPoint.BACK_RIGHT));
-        boolean hasRealSupport = samples.stream().anyMatch(DinosaurTerrainSample::valid);
-        boolean pitchResolved = hasRealSupport;
-        boolean rollResolved = hasRealSupport;
+        boolean hasRealSupport = samples.stream().anyMatch(
+                sample -> sample.valid() && sample.supportWeight() > SAMPLE_EPSILON);
+        boolean pitchResolved = hasRealSupport
+                && Double.isFinite(frontHeight)
+                && Double.isFinite(backHeight);
+        boolean rollResolved = hasRealSupport
+                && Double.isFinite(leftHeight)
+                && Double.isFinite(rightHeight);
         double longitudinalDistance =
                 Math.abs(config.backLeft().modelZOffset() - config.frontLeft().modelZOffset());
         double lateralDistance =
@@ -158,6 +189,7 @@ public final class DinosaurTerrainSampler {
                 bodyTranslationY,
                 pitchResolved,
                 rollResolved,
+                gait,
                 samples);
     }
 
@@ -255,13 +287,20 @@ public final class DinosaurTerrainSampler {
         return value * value;
     }
 
-    private static double averageHeight(
+    private static double weightedHeight(
             DinosaurTerrainSample first,
             DinosaurTerrainSample second) {
         if (first == null || second == null) {
             return Double.NaN;
         }
-        return (first.position().y + second.position().y) * 0.5;
+
+        double totalWeight = first.supportWeight() + second.supportWeight();
+        if (totalWeight <= SAMPLE_EPSILON) {
+            return Double.NaN;
+        }
+        return (first.position().y * first.supportWeight()
+                        + second.position().y * second.supportWeight())
+                / totalWeight;
     }
 
     private static float calculateBodyTranslationY(
@@ -275,10 +314,10 @@ public final class DinosaurTerrainSampler {
         double cosRoll = Math.cos(roll);
         double localFootY = config.footContactHeight() - config.bodyPivotHeight();
         double totalCorrection = 0.0;
-        int supportCount = 0;
+        double totalWeight = 0.0;
 
         for (DinosaurTerrainSample sample : byPoint.values()) {
-            if (!sample.valid()) {
+            if (!sample.valid() || sample.supportWeight() <= SAMPLE_EPSILON) {
                 continue;
             }
 
@@ -290,15 +329,16 @@ public final class DinosaurTerrainSampler {
                                     - sinPitch * probe.modelZOffset());
             double rotatedContactHeight =
                     config.bodyPivotHeight() + rotatedLocalY;
-            totalCorrection += sample.heightOffset() - rotatedContactHeight;
-            supportCount++;
+            totalCorrection += (sample.heightOffset() - rotatedContactHeight)
+                    * sample.supportWeight();
+            totalWeight += sample.supportWeight();
         }
 
-        if (supportCount == 0) {
+        if (totalWeight <= SAMPLE_EPSILON) {
             return 0.0F;
         }
 
-        double correction = totalCorrection / supportCount;
+        double correction = totalCorrection / totalWeight;
         return (float) Mth.clamp(
                 correction,
                 -config.maxBodyVerticalCorrection(),

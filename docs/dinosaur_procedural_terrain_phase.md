@@ -43,6 +43,11 @@ Los apoyos se expresan en bloques a partir de las coordenadas del modelo:
 - roll máximo: 15 grados;
 - zona muerta: 0.5 grados;
 - respuesta exponencial de suavizado: 9 por segundo.
+- ciclo de marcha: 12.8 unidades de `walkAnimation`, unos 20 ticks a la
+  velocidad normal del prototipo;
+- actividad completa de marcha desde velocidad 0.6;
+- vuelo completo de cada pata: 12 % del ciclo;
+- transición de despegue y aterrizaje: 4 % a cada lado.
 
 Los valores son inmutables y sustituibles por especie.
 
@@ -67,6 +72,7 @@ Para calcular pitch y roll:
 
 - las superficies encontradas aportan su altura real;
 - las muestras sin superficie aportan la caída inferior inferida;
+- cada altura se multiplica por el peso de apoyo actual de su pata;
 - al menos un contacto real activa la pose;
 - el límite de pitch de 35 grados evita rotaciones verticales extremas.
 
@@ -87,6 +93,30 @@ de cada pata: esa fase resolverá el residuo individual cuando varios pies
 deban alcanzar alturas diferentes, sin obligar a estirar una sola pata para
 sostener todo el modelo.
 
+## Apoyos durante la marcha
+
+`DinosaurGaitState` deriva una fase cíclica de
+`walkAnimation.position/speed`, disponible tanto en cliente como en servidor.
+El prototipo utiliza una marcha estable de cuatro tiempos:
+
+| Centro de fase | Pata en vuelo |
+| ---: | --- |
+| 0.00 | frontal izquierda |
+| 0.25 | trasera derecha |
+| 0.50 | frontal derecha |
+| 0.75 | trasera izquierda |
+
+En el centro del vuelo el peso de esa pata es cero y no participa ni en el
+plano de pitch/roll ni en la compensación Y de `body`. El peso cambia con una
+curva suave durante despegue y aterrizaje para impedir saltos de pose. Al
+detenerse, la actividad de marcha decae y los cuatro pesos vuelven
+gradualmente a uno.
+
+La animación JSON actual todavía no levanta huesos de pata: sólo contiene el
+bob de `body`. Cuando se añada ese movimiento visual deberá usar la misma
+fase y los mismos offsets de `DinosaurGaitState`; no debe crear un segundo
+reloj independiente, porque desincronizaría la pata visible del apoyo lógico.
+
 ## Integración con GeckoLib
 
 `PrototypeDinosaurRenderer.addRenderData` solicita la pose interpolada y la
@@ -105,10 +135,12 @@ Con F3 visible, `DinosaurDebugRenderer` emite:
 
 - los cuatro contactos, con colores distintos;
 - rojo para una muestra sin superficie;
+- gris para una pata completamente en vuelo;
 - una línea entre la altura de origen y cada contacto;
-- el offset vertical de cada muestra;
+- el offset vertical y el peso `w` de cada muestra;
 - pitch, roll y `bodyY` suavizados, estado `ok` o `--` de cada eje y total de
   muestras reales.
+- fase y actividad actuales de la marcha.
 
 El texto es verde cuando las cuatro superficies son reales, amarillo cuando
 la pose combina contactos con caídas inferidas y naranja cuando no hay ningún

@@ -8,6 +8,7 @@ public record DinosaurProceduralConfig(
         SupportProbe frontRight,
         SupportProbe backLeft,
         SupportProbe backRight,
+        GaitConfig gait,
         double bodyPivotHeight,
         double footContactHeight,
         double contactPatchRadius,
@@ -25,10 +26,11 @@ public record DinosaurProceduralConfig(
                     "foot_front_right",
                     "foot_back_left",
                     "foot_back_right"),
-            new SupportProbe(SupportPoint.FRONT_LEFT, 4.0 / 16.0, -9.0 / 16.0),
-            new SupportProbe(SupportPoint.FRONT_RIGHT, -4.0 / 16.0, -9.0 / 16.0),
-            new SupportProbe(SupportPoint.BACK_LEFT, 4.0 / 16.0, 9.0 / 16.0),
-            new SupportProbe(SupportPoint.BACK_RIGHT, -4.0 / 16.0, 9.0 / 16.0),
+            new SupportProbe(SupportPoint.FRONT_LEFT, 4.0 / 16.0, -9.0 / 16.0, 0.0F),
+            new SupportProbe(SupportPoint.FRONT_RIGHT, -4.0 / 16.0, -9.0 / 16.0, 0.5F),
+            new SupportProbe(SupportPoint.BACK_LEFT, 4.0 / 16.0, 9.0 / 16.0, 0.75F),
+            new SupportProbe(SupportPoint.BACK_RIGHT, -4.0 / 16.0, 9.0 / 16.0, 0.25F),
+            new GaitConfig(12.8F, 0.6F, 0.12F, 0.04F),
             14.0 / 16.0,
             0.0,
             2.0 / 16.0,
@@ -41,7 +43,8 @@ public record DinosaurProceduralConfig(
             9.0F);
 
     public DinosaurProceduralConfig {
-        if (bodyPivotHeight < footContactHeight
+        if (gait == null
+                || bodyPivotHeight < footContactHeight
                 || contactPatchRadius < 0.0
                 || sampleAbove < 0.0
                 || sampleBelow < 0.0
@@ -86,6 +89,31 @@ public record DinosaurProceduralConfig(
         }
     }
 
-    public record SupportProbe(SupportPoint point, double modelXOffset, double modelZOffset) {
+    public record SupportProbe(
+            SupportPoint point,
+            double modelXOffset,
+            double modelZOffset,
+            float swingPhase) {
+        public SupportProbe {
+            if (swingPhase < 0.0F || swingPhase >= 1.0F) {
+                throw new IllegalArgumentException("Swing phase must be in [0, 1)");
+            }
+        }
+    }
+
+    public record GaitConfig(
+            float walkAnimationUnitsPerCycle,
+            float fullActivitySpeed,
+            float fullyLiftedFraction,
+            float supportBlendFraction) {
+        public GaitConfig {
+            if (walkAnimationUnitsPerCycle <= 0.0F
+                    || fullActivitySpeed <= 0.0F
+                    || fullyLiftedFraction < 0.0F
+                    || supportBlendFraction < 0.0F
+                    || fullyLiftedFraction + 2.0F * supportBlendFraction >= 0.25F) {
+                throw new IllegalArgumentException("Gait timing values are invalid");
+            }
+        }
     }
 }

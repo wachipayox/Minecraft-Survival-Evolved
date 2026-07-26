@@ -68,12 +68,13 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
             Gizmos.billboardText(
                     String.format(
                             Locale.ROOT,
-                            "%s %+.2f",
+                            "%s %+.2f w%.2f",
                             sample.point().shortName(),
-                            sample.heightOffset()),
+                            sample.heightOffset(),
+                            sample.supportWeight()),
                     point.add(0.0, 0.14, 0.0),
                     TextGizmo.Style
-                            .forColorAndCentered(sample.valid() ? 0xFFFFFFFF : 0xFFFF5555)
+                            .forColorAndCentered(sampleTextColor(sample))
                             .withScale(0.2F));
         }
 
@@ -91,6 +92,16 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
                 TextGizmo.Style
                         .forColorAndCentered(poseColor(pose))
                         .withScale(0.25F));
+        Gizmos.billboardText(
+                String.format(
+                        Locale.ROOT,
+                        "gait %.2f / activity %.2f",
+                        pose.gait().phase(),
+                        pose.gait().activity()),
+                pose.origin().add(0.0, dinosaur.getBbHeight() + 0.18, 0.0),
+                TextGizmo.Style
+                        .forColorAndCentered(0xFF80D8FF)
+                        .withScale(0.2F));
     }
 
     private static int poseColor(DinosaurProceduralPose pose) {
@@ -101,6 +112,9 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
     }
 
     private static int sampleColor(DinosaurTerrainSample sample) {
+        if (sample.supportWeight() < 0.05F) {
+            return 0xFF777777;
+        }
         if (!sample.valid()) {
             return 0xFFFF3333;
         }
@@ -111,5 +125,12 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
             case BACK_LEFT -> 0xFFFF731A;
             case BACK_RIGHT -> 0xFFBF4DFF;
         };
+    }
+
+    private static int sampleTextColor(DinosaurTerrainSample sample) {
+        if (sample.supportWeight() < 0.05F) {
+            return 0xFFAAAAAA;
+        }
+        return sample.valid() ? 0xFFFFFFFF : 0xFFFF5555;
     }
 }

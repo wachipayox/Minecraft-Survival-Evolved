@@ -38,11 +38,12 @@ La entidad conservará una única hitbox principal de Minecraft para movimiento,
 2. `DinosaurProceduralConfig`: valores inmutables por especie, incluidos huesos, apoyos y partes.
 3. `DinosaurBodyRotationControl` y, solo si hace falta, `DinosaurMoveControl`: giro lógico limitado en servidor.
 4. `DinosaurProceduralState`: estado lógico pequeño e interpolable.
-5. `DinosaurTerrainSampler`: solver geométrico común y determinista para cliente y servidor.
-6. `DinosaurProceduralPose`: resultado común de pitch, roll, traslación vertical corporal, validez y contactos.
-7. `DinosaurProceduralAnimator`: aplica la pose a snapshots de huesos después de las animaciones JSON.
-8. `DinosaurPartEntity`: selección y daño por zona sin IA, guardado ni paquete de aparición independiente.
-9. `DinosaurDebugRenderer`: puntos, direcciones, valores y hitboxes mediante el sistema de gizmos actual.
+5. `DinosaurGaitState`: fase común y pesos continuos de apoyo por pata.
+6. `DinosaurTerrainSampler`: solver geométrico común y determinista para cliente y servidor.
+7. `DinosaurProceduralPose`: resultado común de pitch, roll, traslación vertical corporal, marcha, validez y contactos.
+8. `DinosaurProceduralAnimator`: aplica la pose a snapshots de huesos después de las animaciones JSON.
+9. `DinosaurPartEntity`: selección y daño por zona sin IA, guardado ni paquete de aparición independiente.
+10. `DinosaurDebugRenderer`: puntos, direcciones, valores y hitboxes mediante el sistema de gizmos actual.
 
 El modelo y las animaciones no se generarán ni se renombrarán a ciegas. Primero se incorporará el modelo del concurso y se leerá su jerarquía. Si aún no existe, se hará una geometría temporal mínima y claramente sustituible con los huesos exigidos.
 
@@ -114,6 +115,7 @@ Se crearán de forma incremental, no todos en la siguiente fase:
 - `com/wachi/mse/entity/dinosaur/part/DinosaurPartEntity.java`
 - `com/wachi/mse/entity/dinosaur/part/DinosaurHitZone.java`
 - `com/wachi/mse/entity/dinosaur/procedural/DinosaurProceduralState.java`
+- `com/wachi/mse/entity/dinosaur/procedural/DinosaurGaitState.java`
 - `com/wachi/mse/entity/dinosaur/procedural/DinosaurTerrainSampler.java`
 - `com/wachi/mse/entity/dinosaur/procedural/DinosaurProceduralPose.java`
 - `com/wachi/mse/entity/dinosaur/procedural/DinosaurTerrainSample.java`
@@ -132,6 +134,7 @@ Se modificarán `MseMod.java`, `MseModClient.java` y los recursos de idioma para
 Servidor y lógica común:
 
 - movimiento, navegación, objetivo, yaw lógico y postura;
+- fase de marcha y pesos de apoyo derivados de `walkAnimation`;
 - solver de terreno y pose corporal autoritativa bajo demanda;
 - creación y actualización de multipartes;
 - aplicación del daño y multiplicadores por zona;
@@ -141,6 +144,7 @@ Servidor y lógica común:
 Solo cliente:
 
 - suavizado visual de pitch, roll, altura y patas;
+- levantamiento visual de patas gobernado por la fase común;
 - distribución visual del cuello entre huesos;
 - `DataTicket`, snapshots de GeckoLib y gizmos;
 - descarte o reducción de actualización por distancia.
@@ -156,7 +160,7 @@ entidad se reutilizará antes de añadir nuevos datos sincronizados.
 1. Entidad mínima: registrar el prototipo, atributos, renderer y animaciones idle/walk sin corrección procedural. Verificar cliente y servidor dedicado.
 2. Configuración y cuatro muestras: visualizar primero los puntos; después calcular pitch/roll y compensación Y común sin mover patas individuales. Probar plano, slab, escaleras, un bloque y bordes sin suelo.
 3. Puerta 1: no continuar si existe vibración severa quieto. Ajustar histéresis, frecuencia y límites.
-4. Corrección vertical independiente de cuatro patas, ponderada por apoyo aproximado.
+4. Corrección vertical independiente de cuatro patas, ponderada por los pesos de apoyo de `DinosaurGaitState`.
 5. Puerta 2: comparar caminando y quieto con el sistema activado y desactivado. No añadir IK si la traslación vertical convence.
 6. Giro gradual: yaw lógico de servidor y distribución visual `neck_1`/`neck_2`/`head`; añadir pitch después del yaw.
 7. Puerta 3: probar objetivos a 30, 60, 90 y 180 grados, ataques y pérdida del objetivo.

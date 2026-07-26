@@ -19,6 +19,7 @@ public record DinosaurProceduralPose(
         float targetBodyTranslationYBlocks,
         boolean pitchResolved,
         boolean rollResolved,
+        DinosaurGaitState gait,
         List<DinosaurTerrainSample> samples) {
     public DinosaurProceduralPose {
         samples = List.copyOf(samples);
@@ -57,6 +58,7 @@ public record DinosaurProceduralPose(
                 this.targetBodyTranslationYBlocks,
                 this.pitchResolved,
                 this.rollResolved,
+                this.gait,
                 this.samples);
     }
 }
