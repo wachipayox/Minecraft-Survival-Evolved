@@ -4,6 +4,7 @@ import com.geckolib.animation.state.BoneSnapshot;
 import com.geckolib.renderer.base.BoneSnapshots;
 import com.wachi.mse.entity.dinosaur.PrototypeDinosaurEntity;
 import com.wachi.mse.entity.dinosaur.config.DinosaurProceduralConfig;
+import com.wachi.mse.entity.dinosaur.procedural.DinosaurProceduralPose;
 import java.util.Map;
 import java.util.WeakHashMap;
 

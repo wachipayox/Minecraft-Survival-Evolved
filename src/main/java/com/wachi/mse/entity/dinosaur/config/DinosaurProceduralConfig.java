@@ -8,6 +8,7 @@ public record DinosaurProceduralConfig(
         SupportProbe frontRight,
         SupportProbe backLeft,
         SupportProbe backRight,
+        double contactPatchRadius,
         double sampleAbove,
         double sampleBelow,
         float maxPitchRadians,
@@ -25,15 +26,16 @@ public record DinosaurProceduralConfig(
             new SupportProbe(SupportPoint.FRONT_RIGHT, -4.0 / 16.0, -9.0 / 16.0),
             new SupportProbe(SupportPoint.BACK_LEFT, 4.0 / 16.0, 9.0 / 16.0),
             new SupportProbe(SupportPoint.BACK_RIGHT, -4.0 / 16.0, 9.0 / 16.0),
+            2.0 / 16.0,
             1.25,
-            1.5,
+            3.0,
             (float) Math.toRadians(18.0),
             (float) Math.toRadians(15.0),
             (float) Math.toRadians(0.5),
             9.0F);
 
     public DinosaurProceduralConfig {
-        if (sampleAbove < 0.0 || sampleBelow < 0.0) {
+        if (contactPatchRadius < 0.0 || sampleAbove < 0.0 || sampleBelow < 0.0) {
             throw new IllegalArgumentException("Terrain sample distances must be non-negative");
         }
         if (maxPitchRadians < 0.0F || maxRollRadians < 0.0F) {

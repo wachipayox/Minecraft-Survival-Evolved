@@ -38,8 +38,8 @@ La entidad conservará una única hitbox principal de Minecraft para movimiento,
 2. `DinosaurProceduralConfig`: valores inmutables por especie, incluidos huesos, apoyos y partes.
 3. `DinosaurBodyRotationControl` y, solo si hace falta, `DinosaurMoveControl`: giro lógico limitado en servidor.
 4. `DinosaurProceduralState`: estado lógico pequeño e interpolable.
-5. `DinosaurTerrainSampler`: cuatro muestras visuales de terreno en cliente, con caché y formas de colisión.
-6. `DinosaurProceduralPose`: resultado visual de pitch, roll, altura, patas, cuello y pesos.
+5. `DinosaurTerrainSampler`: solver geométrico común y determinista para cliente y servidor.
+6. `DinosaurProceduralPose`: resultado común de pitch, roll, validez por eje y contactos.
 7. `DinosaurProceduralAnimator`: aplica la pose a snapshots de huesos después de las animaciones JSON.
 8. `DinosaurPartEntity`: selección y daño por zona sin IA, guardado ni paquete de aparición independiente.
 9. `DinosaurDebugRenderer`: puntos, direcciones, valores y hitboxes mediante el sistema de gizmos actual.
@@ -114,8 +114,9 @@ Se crearán de forma incremental, no todos en la siguiente fase:
 - `com/wachi/mse/entity/dinosaur/part/DinosaurPartEntity.java`
 - `com/wachi/mse/entity/dinosaur/part/DinosaurHitZone.java`
 - `com/wachi/mse/entity/dinosaur/procedural/DinosaurProceduralState.java`
-- `com/wachi/mse/client/animation/DinosaurTerrainSampler.java`
-- `com/wachi/mse/client/animation/DinosaurProceduralPose.java`
+- `com/wachi/mse/entity/dinosaur/procedural/DinosaurTerrainSampler.java`
+- `com/wachi/mse/entity/dinosaur/procedural/DinosaurProceduralPose.java`
+- `com/wachi/mse/entity/dinosaur/procedural/DinosaurTerrainSample.java`
 - `com/wachi/mse/client/animation/DinosaurProceduralAnimator.java`
 - `com/wachi/mse/client/model/PrototypeDinosaurModel.java`
 - `com/wachi/mse/client/renderer/PrototypeDinosaurRenderer.java`
@@ -131,6 +132,7 @@ Se modificarán `MseMod.java`, `MseModClient.java` y los recursos de idioma para
 Servidor y lógica común:
 
 - movimiento, navegación, objetivo, yaw lógico y postura;
+- solver de terreno y pose corporal autoritativa bajo demanda;
 - creación y actualización de multipartes;
 - aplicación del daño y multiplicadores por zona;
 - flags de bloqueo procedural que afecten al combate;
@@ -138,13 +140,16 @@ Servidor y lógica común:
 
 Solo cliente:
 
-- muestreo del terreno y caché de muestras;
 - suavizado visual de pitch, roll, altura y patas;
 - distribución visual del cuello entre huesos;
 - `DataTicket`, snapshots de GeckoLib y gizmos;
 - descarte o reducción de actualización por distancia.
 
-No se sincronizarán alturas de suelo, offsets de patas ni transformaciones de huesos. La rotación lógica ya disponible en la entidad se reutilizará antes de añadir nuevos datos sincronizados.
+No se sincronizarán alturas de suelo, offsets de patas ni transformaciones de
+huesos. Cliente y servidor pueden derivar la pose con el mismo solver a partir
+de su copia del terreno; el servidor sólo lo ejecutará cuando una operación
+lógica necesite una parte inclinada. La rotación lógica ya disponible en la
+entidad se reutilizará antes de añadir nuevos datos sincronizados.
 
 ## Orden de implementación y puertas
 

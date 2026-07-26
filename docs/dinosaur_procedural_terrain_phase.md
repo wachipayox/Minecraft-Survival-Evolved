@@ -4,15 +4,22 @@ Fecha de implementación: 2026-07-26.
 
 ## Resultado
 
-El prototipo dispone de la primera capa procedural exclusivamente visual. El
-renderer toma cuatro muestras de suelo alineadas con los pivotes reales de los
-pies, calcula inclinación longitudinal y lateral, suaviza ambas magnitudes y
-las suma a la animación JSON del hueso `body`.
+El prototipo dispone de la primera capa procedural de pose corporal. Toma
+cuatro apoyos alineados con los pivotes de los pies, calcula inclinación
+longitudinal y lateral y suma el resultado a la animación JSON del hueso
+`body`.
 
-No se modifica la hitbox, la posición autoritativa ni la navegación. El
-servidor continúa usando una entidad vanilla convencional; las consultas de
-terreno, el suavizado, los datos de render y los gizmos sólo existen en
-cliente.
+El cálculo geométrico está en el paquete común
+`com.wachi.mse.entity.dinosaur.procedural`: no consulta objetivos,
+navegación, `NoAI` ni el valor cacheado de `onGround`. El cliente lo ejecuta
+con una transformación interpolada para render; el servidor puede ejecutar
+exactamente el mismo solver mediante
+`DinosaurTerrainSampler.sampleAuthoritative(...)` cuando una parte lógica
+necesite conocer la postura.
+
+El suavizado, el `DataTicket`, los snapshots de GeckoLib y los gizmos siguen
+siendo exclusivamente de cliente. No se modifica todavía la hitbox, la
+posición autoritativa, la navegación ni las patas.
 
 ## Configuración del prototipo
 
@@ -27,7 +34,8 @@ Los apoyos se expresan en bloques a partir de las coordenadas del modelo:
 
 `DinosaurProceduralConfig` también fija:
 
-- búsqueda vertical: 1.25 bloques por encima y 1.5 por debajo;
+- radio de la huella de contacto: 0.125 bloques;
+- búsqueda vertical: 1.25 bloques por encima y 3 por debajo;
 - pitch máximo: 18 grados;
 - roll máximo: 15 grados;
 - zona muerta: 0.5 grados;
@@ -35,55 +43,74 @@ Los apoyos se expresan en bloques a partir de las coordenadas del modelo:
 
 Los valores son inmutables y sustituibles por especie.
 
-## Muestreo
+## Muestreo robusto
 
-`DinosaurTerrainSampler` transforma los offsets del modelo con la misma
-rotación usada por el renderer (`180° - bodyYaw`). Para cada apoyo recorre una
-columna vertical acotada y consulta la `VoxelShape` de colisión en el punto
-local exacto.
+`DinosaurTerrainSampler` transforma los offsets con la misma rotación usada
+por el renderer (`180° - bodyYaw`). Cada apoyo representa una pequeña huella
+circular, no un rayo infinitamente fino. El solver recorre solamente las
+columnas que intersectan esa huella y consulta las cajas de la `VoxelShape`
+de colisión. Así conserva las alturas reales de slabs, escaleras y otras
+formas parciales, pero un pivote situado unos píxeles fuera del borde de un
+bloque todavía puede reconocer que el pie lo toca.
 
-La consulta Y de `VoxelShape.max` recibe los otros ejes en orden Z/X. Esto
-permite distinguir correctamente la altura local de slabs, escaleras y otras
-formas parciales sin reducirlas a un bloque completo.
+La altura elegida es el contacto más alto dentro del margen vertical y, en
+caso de empate, el más cercano al centro nominal del pie. No se fuerzan
+cargas de chunks.
 
-Si falta un chunk, un apoyo no encuentra superficie o la entidad no está en
-suelo, el objetivo procedural vuelve a cero. No se fuerza la carga de chunks.
+Pitch y roll se resuelven por separado:
+
+- pitch necesita al menos un apoyo frontal y uno trasero;
+- roll necesita al menos un apoyo izquierdo y uno derecho;
+- una muestra inválida ya no cancela toda la postura;
+- tres muestras válidas siempre permiten resolver ambos ejes.
+
+Si sólo hay información suficiente para un eje, el otro queda neutro y la
+depuración muestra explícitamente cuál está sin resolver.
 
 ## Integración con GeckoLib
 
-`PrototypeDinosaurRenderer.addRenderData` captura una
-`DinosaurProceduralPose` en un `DataTicket`. Después de que GeckoLib aplique
-los controladores JSON, `adjustModelBonesForRender` suma pitch y roll al
-`BoneSnapshot` de `body`.
+`PrototypeDinosaurRenderer.addRenderData` solicita la pose interpolada y la
+guarda en un `DataTicket`. Después de que GeckoLib aplique los controladores
+JSON, `adjustModelBonesForRender` suma pitch y roll al `BoneSnapshot` de
+`body`.
 
 El suavizado se conserva por entidad en un `WeakHashMap`; usa tiempo de render
-fraccionario y evita avanzar dos veces si una entidad genera más de un pase en
-el mismo frame.
+fraccionario y evita avanzar dos veces si una entidad genera más de un pase
+en el mismo frame. Esta parte visual no altera el resultado determinista que
+puede consultar el servidor.
 
 ## Depuración
 
-Con la pantalla F3 visible, `DinosaurDebugRenderer` emite gizmos para:
+Con F3 visible, `DinosaurDebugRenderer` emite:
 
-- los cuatro puntos de apoyo, con colores distintos;
-- una línea vertical entre el origen de la entidad y cada altura;
+- los cuatro contactos, con colores distintos;
+- rojo para una muestra sin superficie;
+- una línea entre la altura de origen y cada contacto;
 - el offset vertical de cada muestra;
-- pitch y roll suavizados sobre la entidad.
+- pitch y roll suavizados, estado `ok` o `--` de cada eje y total de muestras
+  válidas.
 
-El registro utiliza `RegisterDebugRenderersEvent` y la API de gizmos de
-Minecraft 26.1.2. Fuera de F3 el renderer sale inmediatamente.
+El texto es verde cuando ambos ejes están resueltos, amarillo cuando sólo uno
+lo está y naranja cuando ninguno dispone de suficientes contactos.
+
+## Incidencia corregida
+
+La primera implementación hacía:
+
+`onGround && las_cuatro_muestras_son_válidas`
+
+Esa condición explicaba los dos síntomas observados: `NoAI` podía dejar el
+flag de suelo sin actualizar de la forma esperada por el renderer, y cualquier
+punto fuera de un borde anulaba pitch y roll simultáneamente. La condición se
+ha eliminado; ahora la pose depende sólo de geometría reproducible.
 
 ## Verificaciones
 
-- `gradlew clean compileJava`: correcto y sin avisos Java de API obsoleta.
+- `gradlew clean compileJava`: correcto.
 - `gradlew clean build`: correcto.
-- arranque de cliente NeoForge: correcto, con GeckoLib, Mixins y
-  `mc_evolved` cargados.
-- carga de recursos GeckoLib: un modelo y un archivo de animaciones, sin
-  errores.
-- el exportador fue corregido para serializar timestamps como `0.0`, `1.0`,
-  etc. y mantener orden temporal; desapareció el aviso de keyframes fuera de
-  orden que reveló el primer smoke test.
+- el paquete común no importa ninguna clase `net.minecraft.client`.
+- no quedan usos de `onGround()` en el cálculo procedural.
 
-La puerta visual de jitter todavía exige observar una entidad sobre plano,
-slab, escalera y desnivel dentro de un mundo. Hasta cerrarla no se implementa
-la corrección vertical individual de patas.
+La corrección vertical individual de patas y la distribución de giro entre
+cuello y cabeza permanecen fuera de esta fase hasta definir su comportamiento
+visual.

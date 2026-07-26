@@ -1,7 +1,7 @@
 package com.wachi.mse.client.debug;
 
-import com.wachi.mse.client.animation.DinosaurProceduralPose;
 import com.wachi.mse.entity.dinosaur.PrototypeDinosaurEntity;
+import com.wachi.mse.entity.dinosaur.procedural.DinosaurProceduralPose;
 import java.util.Map;
 import java.util.WeakHashMap;
 import org.jetbrains.annotations.Nullable;

@@ -1,8 +1,8 @@
 package com.wachi.mse.client.debug;
 
-import com.wachi.mse.client.animation.DinosaurProceduralPose;
-import com.wachi.mse.client.animation.DinosaurTerrainSample;
 import com.wachi.mse.entity.dinosaur.PrototypeDinosaurEntity;
+import com.wachi.mse.entity.dinosaur.procedural.DinosaurProceduralPose;
+import com.wachi.mse.entity.dinosaur.procedural.DinosaurTerrainSample;
 import java.util.Locale;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.culling.Frustum;
@@ -80,13 +80,23 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
         Gizmos.billboardText(
                 String.format(
                         Locale.ROOT,
-                        "MSE pitch %+.1f\u00b0 / roll %+.1f\u00b0",
+                        "MSE pitch %+.1f\u00b0 [%s] / roll %+.1f\u00b0 [%s] / %d/4",
                         Math.toDegrees(pose.pitchRadians()),
-                        Math.toDegrees(pose.rollRadians())),
+                        pose.pitchResolved() ? "ok" : "--",
+                        Math.toDegrees(pose.rollRadians()),
+                        pose.rollResolved() ? "ok" : "--",
+                        pose.validSampleCount()),
                 pose.origin().add(0.0, dinosaur.getBbHeight() + 0.4, 0.0),
                 TextGizmo.Style
-                        .forColorAndCentered(pose.terrainValid() ? 0xFF55FF55 : 0xFFFFAA00)
+                        .forColorAndCentered(poseColor(pose))
                         .withScale(0.25F));
+    }
+
+    private static int poseColor(DinosaurProceduralPose pose) {
+        if (pose.fullyResolved()) {
+            return 0xFF55FF55;
+        }
+        return pose.terrainValid() ? 0xFFFFFF55 : 0xFFFFAA00;
     }
 
     private static int sampleColor(DinosaurTerrainSample sample) {

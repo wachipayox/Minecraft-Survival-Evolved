@@ -8,11 +8,11 @@ import com.geckolib.renderer.base.GeoRenderState;
 import com.geckolib.renderer.base.RenderPassInfo;
 import com.wachi.mse.MseMod;
 import com.wachi.mse.client.animation.DinosaurProceduralAnimator;
-import com.wachi.mse.client.animation.DinosaurProceduralPose;
-import com.wachi.mse.client.animation.DinosaurTerrainSampler;
 import com.wachi.mse.client.debug.DinosaurDebugPoseStore;
 import com.wachi.mse.entity.dinosaur.PrototypeDinosaurEntity;
 import com.wachi.mse.entity.dinosaur.config.DinosaurProceduralConfig;
+import com.wachi.mse.entity.dinosaur.procedural.DinosaurProceduralPose;
+import com.wachi.mse.entity.dinosaur.procedural.DinosaurTerrainSampler;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import net.minecraft.resources.Identifier;
@@ -25,7 +25,6 @@ public final class PrototypeDinosaurRenderer
                     MseMod.MOD_ID + ":dinosaur_procedural_pose",
                     DinosaurProceduralPose.class);
 
-    private final DinosaurTerrainSampler terrainSampler = new DinosaurTerrainSampler();
     private final DinosaurProceduralAnimator proceduralAnimator = new DinosaurProceduralAnimator();
 
     public PrototypeDinosaurRenderer(EntityRendererProvider.Context context) {
@@ -43,7 +42,7 @@ public final class PrototypeDinosaurRenderer
             float partialTick) {
         DinosaurProceduralConfig config = DinosaurProceduralConfig.PROTOTYPE;
         DinosaurProceduralPose sampledPose =
-                this.terrainSampler.sample(animatable, config, partialTick);
+                DinosaurTerrainSampler.sampleInterpolated(animatable, config, partialTick);
         DinosaurProceduralPose smoothedPose =
                 this.proceduralAnimator.smooth(animatable, sampledPose, config, partialTick);
         ((GeoRenderState) renderState).addGeckolibData(PROCEDURAL_POSE, smoothedPose);
