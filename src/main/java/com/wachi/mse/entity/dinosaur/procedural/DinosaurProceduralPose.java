@@ -4,9 +4,10 @@ import java.util.List;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Terrain-derived body pose shared by logical server code and client render
- * code. The target angles are deterministic for the supplied world snapshot;
- * the displayed angles may additionally be smoothed by the renderer.
+ * Terrain-derived posture shared by logical server code and client render
+ * code. Terrain pitch/roll describe the measured slope; applied pitch/roll
+ * contain only the limited hybrid body response. Displayed values may
+ * additionally be smoothed by the renderer.
  */
 public record DinosaurProceduralPose(
         Vec3 origin,
@@ -17,12 +18,16 @@ public record DinosaurProceduralPose(
         float targetPitchRadians,
         float targetRollRadians,
         float targetBodyTranslationYBlocks,
+        float terrainPitchRadians,
+        float terrainRollRadians,
         boolean pitchResolved,
         boolean rollResolved,
         DinosaurGaitState gait,
-        List<DinosaurTerrainSample> samples) {
+        List<DinosaurTerrainSample> samples,
+        List<DinosaurLegPose> legs) {
     public DinosaurProceduralPose {
         samples = List.copyOf(samples);
+        legs = List.copyOf(legs);
     }
 
     public boolean terrainValid() {
@@ -43,10 +48,30 @@ public record DinosaurProceduralPose(
         return count;
     }
 
+    public int reachableLegCount() {
+        int count = 0;
+        for (DinosaurLegPose leg : this.legs) {
+            if (leg.reachable()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public DinosaurLegPose leg(String legId) {
+        for (DinosaurLegPose leg : this.legs) {
+            if (leg.legId().equals(legId)) {
+                return leg;
+            }
+        }
+        return null;
+    }
+
     public DinosaurProceduralPose withSmoothedValues(
             float pitch,
             float roll,
-            float bodyTranslationY) {
+            float bodyTranslationY,
+            List<DinosaurLegPose> smoothedLegs) {
         return new DinosaurProceduralPose(
                 this.origin,
                 this.bodyYawDegrees,
@@ -56,9 +81,12 @@ public record DinosaurProceduralPose(
                 this.targetPitchRadians,
                 this.targetRollRadians,
                 this.targetBodyTranslationYBlocks,
+                this.terrainPitchRadians,
+                this.terrainRollRadians,
                 this.pitchResolved,
                 this.rollResolved,
                 this.gait,
-                this.samples);
+                this.samples,
+                smoothedLegs);
     }
 }

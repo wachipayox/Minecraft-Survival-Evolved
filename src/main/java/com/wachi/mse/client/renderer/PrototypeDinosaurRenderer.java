@@ -40,7 +40,7 @@ public final class PrototypeDinosaurRenderer
             @Nullable Void relatedObject,
             LivingEntityRenderState renderState,
             float partialTick) {
-        DinosaurProceduralConfig config = DinosaurProceduralConfig.PROTOTYPE;
+        DinosaurProceduralConfig config = animatable.proceduralConfig();
         DinosaurProceduralPose sampledPose =
                 DinosaurTerrainSampler.sampleInterpolated(animatable, config, partialTick);
         DinosaurProceduralPose smoothedPose =

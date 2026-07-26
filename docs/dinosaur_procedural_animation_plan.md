@@ -2,10 +2,12 @@
 
 Fecha de inspección: 2026-07-26.
 
-Estado: fase 2 implementada. La entidad mínima se documenta en
-`dinosaur_prototype_phase.md` y el muestreo de terreno, pitch/roll y gizmos en
-`dinosaur_procedural_terrain_phase.md`. La puerta visual de jitter permanece
-abierta antes de añadir corrección independiente de patas.
+Estado: fase 3 implementada. La entidad mínima se documenta en
+`dinosaur_prototype_phase.md`; el muestreo de terreno, la marcha compartida y
+el IK de dos segmentos se documentan en
+`dinosaur_procedural_terrain_phase.md`. Las patas resuelven primero el
+desnivel; el tronco solo recibe una inclinación residual cuando la compresión
+o la falta de alcance superan los límites físicos configurados.
 
 ## Estado técnico verificado
 
@@ -34,16 +36,22 @@ Mixins está preparado mediante `mc_evolved.mixins.json`, el bloque `[[mixins]]`
 
 La entidad conservará una única hitbox principal de Minecraft para movimiento, colisión con bloques, navegación y posición autoritativa. El sistema se separará así:
 
-1. `PrototypeDinosaurEntity`: estado, IA, animaciones lógicas y partes autoritativas.
-2. `DinosaurProceduralConfig`: valores inmutables por especie, incluidos huesos, apoyos y partes.
+1. `ProceduralDinosaur`: contrato por especie; la entidad prototipo aporta su
+   configuración sin acoplar el solver a su clase concreta.
+2. `DinosaurProceduralConfig`: lista inmutable y arbitraria de patas, huesos,
+   proporciones, apoyos y marcha por especie.
 3. `DinosaurBodyRotationControl` y, solo si hace falta, `DinosaurMoveControl`: giro lógico limitado en servidor.
 4. `DinosaurProceduralState`: estado lógico pequeño e interpolable.
 5. `DinosaurGaitState`: fase común y pesos continuos de apoyo por pata.
 6. `DinosaurTerrainSampler`: solver geométrico común y determinista para cliente y servidor.
-7. `DinosaurProceduralPose`: resultado común de pitch, roll, traslación vertical corporal, marcha, validez y contactos.
-8. `DinosaurProceduralAnimator`: aplica la pose a snapshots de huesos después de las animaciones JSON.
-9. `DinosaurPartEntity`: selección y daño por zona sin IA, guardado ni paquete de aparición independiente.
-10. `DinosaurDebugRenderer`: puntos, direcciones, valores y hitboxes mediante el sistema de gizmos actual.
+7. `DinosaurLegIkSolver`: altura común y una solución 3D
+   cadera-rodilla-pie por cada pata configurada, reproducible en servidor.
+8. `DinosaurProceduralPose`: resultado común de pendiente medida, traslación
+   vertical, marcha, contactos y ángulos de patas.
+9. `DinosaurProceduralAnimator`: aplica altura, IK y la inclinación residual
+   por exceso de compresión/alcance después de las animaciones JSON.
+10. `DinosaurPartEntity`: selección y daño por zona sin IA, guardado ni paquete de aparición independiente.
+11. `DinosaurDebugRenderer`: puntos, direcciones, valores y hitboxes mediante el sistema de gizmos actual.
 
 El modelo y las animaciones no se generarán ni se renombrarán a ciegas. Primero se incorporará el modelo del concurso y se leerá su jerarquía. Si aún no existe, se hará una geometría temporal mínima y claramente sustituible con los huesos exigidos.
 
@@ -70,7 +78,8 @@ El modelo y las animaciones no se generarán ni se renombrarán a ciegas. Primer
 
 - `BlockState.getCollisionShape(BlockGetter, BlockPos, CollisionContext)`.
 - `VoxelShape.max(Direction.Axis.Y, ..., ...)` o `VoxelShape.clip(...)` para respetar slabs, escaleras y formas parciales.
-- Un `MutableBlockPos` reutilizable y cuatro offsets locales rotados por el yaw corporal.
+- Un `MutableBlockPos` reutilizable y la lista de offsets locales de la
+  especie rotados por el yaw corporal.
 - Búsqueda vertical acotada; no se escanearán volúmenes ni se hará un raycast por hueso.
 
 ### Movimiento y orientación
@@ -158,10 +167,15 @@ entidad se reutilizará antes de añadir nuevos datos sincronizados.
 ## Orden de implementación y puertas
 
 1. Entidad mínima: registrar el prototipo, atributos, renderer y animaciones idle/walk sin corrección procedural. Verificar cliente y servidor dedicado.
-2. Configuración y cuatro muestras: visualizar primero los puntos; después calcular pitch/roll y compensación Y común sin mover patas individuales. Probar plano, slab, escaleras, un bloque y bordes sin suelo.
+2. Configuración y muestras por pata: visualizar primero los puntos; después
+   calcular pitch/roll y compensación Y común. Probar plano, slab, escaleras,
+   un bloque y bordes sin suelo.
 3. Puerta 1: no continuar si existe vibración severa quieto. Ajustar histéresis, frecuencia y límites.
-4. Corrección vertical independiente de cuatro patas, ponderada por los pesos de apoyo de `DinosaurGaitState`.
-5. Puerta 2: comparar caminando y quieto con el sistema activado y desactivado. No añadir IK si la traslación vertical convence.
+4. IK 3D de dos segmentos para todas las patas configuradas, ponderado por
+   los pesos de `DinosaurGaitState`; usar altura común e inclinación residual
+   limitada para conservar alcance. Implementado.
+5. Puerta 2: comparar caminando y quieto, ajustar alcance, altura de vuelo y
+   suavizado con el overlay F3.
 6. Giro gradual: yaw lógico de servidor y distribución visual `neck_1`/`neck_2`/`head`; añadir pitch después del yaw.
 7. Puerta 3: probar objetivos a 30, 60, 90 y 180 grados, ataques y pérdida del objetivo.
 8. Multipartes: empezar con cabeza, torso y cola; ampliar a cuello/cadera solo si son estables.
@@ -170,13 +184,17 @@ entidad se reutilizará antes de añadir nuevos datos sincronizados.
 
 ## Riesgos y criterios de simplificación
 
-- No hay modelo ni animaciones: es el bloqueo principal para una validación visual real.
+- El modelo actual es provisional; cada nuevo rig debe validar pivotes y
+  jerarquía antes de copiar su configuración.
 - GeckoLib 5 usa render states y snapshots distintos de GeckoLib 4; no se reutilizarán ejemplos antiguos.
 - Las formas de escaleras pueden dar discontinuidades. Se aplicarán umbral, histéresis y suavizado; no física adicional.
-- Un cuerpo demasiado largo puede necesitar seis muestras. Se empezará con cuatro y solo se ampliará si falla visualmente.
-- Si cuatro sondas acotadas por entidad resultan costosas, se bajará su frecuencia y se reutilizarán resultados según movimiento y distancia.
+- El coste escala con el número de patas configuradas. Las especies con
+  muchos apoyos podrán reducir frecuencia y reutilizar resultados según
+  movimiento y distancia.
 - Si detectar la fase de apoyo desde la animación no es estable, se usará `walkAnimationPos`/`walkAnimationSpeed`.
-- Si la traslación vertical funciona, se cancelan rotación articular e IK.
+- Si un desnivel supera el alcance físico, se conserva el clamp visible y se
+  decide por especie si ampliar el rig; no se escala el modelo de forma
+  silenciosa.
 - Si el cuello interfiere con ataques, el estado de ataque reducirá sus pesos a cero.
 - Si los multiplicadores de daño complican el primer multipartes, todas las zonas redirigirán daño 1:1.
 - Si una API pública cubre la necesidad, no se añadirá un Mixin.

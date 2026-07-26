@@ -1,6 +1,7 @@
 package com.wachi.mse.client.debug;
 
-import com.wachi.mse.entity.dinosaur.PrototypeDinosaurEntity;
+import com.wachi.mse.entity.dinosaur.ProceduralDinosaur;
+import com.wachi.mse.entity.dinosaur.procedural.DinosaurLegPose;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurProceduralPose;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurTerrainSample;
 import java.util.Locale;
@@ -11,11 +12,20 @@ import net.minecraft.gizmos.Gizmos;
 import net.minecraft.gizmos.TextGizmo;
 import net.minecraft.util.debug.DebugValueAccess;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
 
 public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRenderer {
     private static final double MAX_DISTANCE_SQUARED = 64.0 * 64.0;
     private static final float POINT_SIZE = 0.11F;
+    private static final int[] LEG_COLORS = {
+        0xFFFFD91A,
+        0xFF1AE6FF,
+        0xFFFF731A,
+        0xFFBF4DFF,
+        0xFF66FF8C,
+        0xFFFF66B3
+    };
 
     private final Minecraft minecraft;
 
@@ -38,7 +48,8 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
 
         Vec3 cameraPosition = new Vec3(cameraX, cameraY, cameraZ);
         for (Entity candidate : this.minecraft.level.entitiesForRendering()) {
-            if (!(candidate instanceof PrototypeDinosaurEntity dinosaur)
+            if (!(candidate instanceof LivingEntity dinosaur)
+                    || !(candidate instanceof ProceduralDinosaur)
                     || dinosaur.position().distanceToSqr(cameraPosition) > MAX_DISTANCE_SQUARED
                     || !frustum.isVisible(dinosaur.getBoundingBox())) {
                 continue;
@@ -55,8 +66,9 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
 
     private static void emitPoseGizmos(
             DinosaurProceduralPose pose,
-            PrototypeDinosaurEntity dinosaur) {
+            LivingEntity dinosaur) {
         for (DinosaurTerrainSample sample : pose.samples()) {
+            DinosaurLegPose leg = pose.leg(sample.legId());
             int color = sampleColor(sample);
             Vec3 point = sample.position();
             Gizmos.point(point, color, POINT_SIZE);
@@ -65,13 +77,30 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
                     point,
                     color,
                     2.0F);
+            if (leg != null) {
+                Vec3 target = new Vec3(
+                        point.x,
+                        pose.origin().y + leg.targetFootHeightOffset(),
+                        point.z);
+                Vec3 solved = new Vec3(
+                        point.x,
+                        pose.origin().y + leg.solvedFootHeightOffset(),
+                        point.z);
+                int ikColor = leg.reachable() ? 0xFF55FF55 : 0xFFFF55FF;
+                Gizmos.point(solved, ikColor, POINT_SIZE * 0.75F);
+                Gizmos.line(target, solved, ikColor, 1.5F);
+            }
             Gizmos.billboardText(
                     String.format(
                             Locale.ROOT,
-                            "%s %+.2f w%.2f",
-                            sample.point().shortName(),
+                            "%s %+.2f w%.2f k%+.0f\u00b0 e%.2f",
+                            sample.shortName(),
                             sample.heightOffset(),
-                            sample.supportWeight()),
+                            sample.supportWeight(),
+                            leg == null
+                                    ? 0.0
+                                    : Math.toDegrees(leg.kneeRotation().xRadians()),
+                            leg == null ? 0.0 : leg.extensionFraction()),
                     point.add(0.0, 0.14, 0.0),
                     TextGizmo.Style
                             .forColorAndCentered(sampleTextColor(sample))
@@ -81,13 +110,17 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
         Gizmos.billboardText(
                 String.format(
                         Locale.ROOT,
-                        "MSE pitch %+.1f\u00b0 [%s] / roll %+.1f\u00b0 [%s] / bodyY %+.2f / %d/4",
+                        "MSE body %+.1f\u00b0/%+.1f\u00b0 terrain %+.1f\u00b0/%+.1f\u00b0"
+                                + " / rootY %+.2f / IK %d/%d / ground %d/%d",
                         Math.toDegrees(pose.pitchRadians()),
-                        pose.pitchResolved() ? "ok" : "--",
                         Math.toDegrees(pose.rollRadians()),
-                        pose.rollResolved() ? "ok" : "--",
+                        Math.toDegrees(pose.terrainPitchRadians()),
+                        Math.toDegrees(pose.terrainRollRadians()),
                         pose.bodyTranslationYBlocks(),
-                        pose.validSampleCount()),
+                        pose.reachableLegCount(),
+                        pose.legs().size(),
+                        pose.validSampleCount(),
+                        pose.samples().size()),
                 pose.origin().add(0.0, dinosaur.getBbHeight() + 0.4, 0.0),
                 TextGizmo.Style
                         .forColorAndCentered(poseColor(pose))
@@ -119,12 +152,7 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
             return 0xFFFF3333;
         }
 
-        return switch (sample.point()) {
-            case FRONT_LEFT -> 0xFFFFD91A;
-            case FRONT_RIGHT -> 0xFF1AE6FF;
-            case BACK_LEFT -> 0xFFFF731A;
-            case BACK_RIGHT -> 0xFFBF4DFF;
-        };
+        return LEG_COLORS[Math.floorMod(sample.legId().hashCode(), LEG_COLORS.length)];
     }
 
     private static int sampleTextColor(DinosaurTerrainSample sample) {

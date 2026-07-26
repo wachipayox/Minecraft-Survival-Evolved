@@ -6,6 +6,7 @@ import com.geckolib.animatable.manager.AnimatableManager;
 import com.geckolib.animation.AnimationController;
 import com.geckolib.animation.RawAnimation;
 import com.geckolib.util.GeckoLibUtil;
+import com.wachi.mse.entity.dinosaur.config.DinosaurProceduralConfig;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -17,7 +18,9 @@ import net.minecraft.world.entity.ai.goal.RandomStrollGoal;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 
-public final class PrototypeDinosaurEntity extends PathfinderMob implements GeoEntity {
+public final class PrototypeDinosaurEntity
+        extends PathfinderMob
+        implements GeoEntity, ProceduralDinosaur {
     private static final RawAnimation IDLE_ANIMATION =
             RawAnimation.begin().thenLoop("animation.prototype_dinosaur.idle");
     private static final RawAnimation WALK_ANIMATION =
@@ -56,5 +59,10 @@ public final class PrototypeDinosaurEntity extends PathfinderMob implements GeoE
     @Override
     public AnimatableInstanceCache getAnimatableInstanceCache() {
         return this.animationCache;
+    }
+
+    @Override
+    public DinosaurProceduralConfig proceduralConfig() {
+        return DinosaurProceduralConfig.PROTOTYPE;
     }
 }

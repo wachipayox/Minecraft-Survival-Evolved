@@ -1,6 +1,5 @@
 package com.wachi.mse.entity.dinosaur.procedural;
 
-import com.wachi.mse.entity.dinosaur.config.DinosaurProceduralConfig.SupportPoint;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -14,7 +13,8 @@ import net.minecraft.world.phys.Vec3;
  * stance.</p>
  */
 public record DinosaurTerrainSample(
-        SupportPoint point,
+        String legId,
+        String shortName,
         Vec3 position,
         double heightOffset,
         boolean valid,

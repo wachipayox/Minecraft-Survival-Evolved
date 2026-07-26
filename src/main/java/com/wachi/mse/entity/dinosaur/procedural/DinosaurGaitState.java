@@ -1,28 +1,27 @@
 package com.wachi.mse.entity.dinosaur.procedural;
 
-import com.wachi.mse.entity.dinosaur.PrototypeDinosaurEntity;
+import com.wachi.mse.entity.dinosaur.config.DinosaurLegRig;
 import com.wachi.mse.entity.dinosaur.config.DinosaurProceduralConfig;
 import com.wachi.mse.entity.dinosaur.config.DinosaurProceduralConfig.GaitConfig;
-import com.wachi.mse.entity.dinosaur.config.DinosaurProceduralConfig.SupportPoint;
-import com.wachi.mse.entity.dinosaur.config.DinosaurProceduralConfig.SupportProbe;
-import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.LivingEntity;
 
 /**
- * Shared gait phase and continuous stance weights. Future visual foot lift
- * must use this same phase so render contacts and logical contacts agree.
+ * Shared gait phase and continuous stance weights. Procedural foot lift uses
+ * this same phase so render contacts and logical contacts agree.
  */
 public record DinosaurGaitState(
         float phase,
         float activity,
-        Map<SupportPoint, Float> supportWeights) {
+        Map<String, Float> supportWeights) {
     public DinosaurGaitState {
         supportWeights = Map.copyOf(supportWeights);
     }
 
     public static DinosaurGaitState sampleInterpolated(
-            PrototypeDinosaurEntity entity,
+            LivingEntity entity,
             DinosaurProceduralConfig config,
             float partialTick) {
         return fromWalkAnimation(
@@ -32,7 +31,7 @@ public record DinosaurGaitState(
     }
 
     public static DinosaurGaitState sampleAuthoritative(
-            PrototypeDinosaurEntity entity,
+            LivingEntity entity,
             DinosaurProceduralConfig config) {
         return fromWalkAnimation(
                 config,
@@ -50,18 +49,18 @@ public record DinosaurGaitState(
                 walkSpeed / gait.fullActivitySpeed(),
                 0.0F,
                 1.0F));
-        Map<SupportPoint, Float> weights = new EnumMap<>(SupportPoint.class);
+        Map<String, Float> weights = new LinkedHashMap<>();
 
-        for (SupportProbe probe : config.supportProbes()) {
-            float phaseWeight = phaseSupportWeight(phase, probe.swingPhase(), gait);
-            weights.put(probe.point(), Mth.lerp(activity, 1.0F, phaseWeight));
+        for (DinosaurLegRig leg : config.legs()) {
+            float phaseWeight = phaseSupportWeight(phase, leg.swingPhase(), gait);
+            weights.put(leg.id(), Mth.lerp(activity, 1.0F, phaseWeight));
         }
 
         return new DinosaurGaitState(phase, activity, weights);
     }
 
-    public float supportWeight(SupportPoint point) {
-        return this.supportWeights.getOrDefault(point, 1.0F);
+    public float supportWeight(String legId) {
+        return this.supportWeights.getOrDefault(legId, 1.0F);
     }
 
     private static float phaseSupportWeight(
