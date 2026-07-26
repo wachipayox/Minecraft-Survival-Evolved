@@ -36,9 +36,17 @@ public final class DinosaurTerrainSampler {
                 Mth.lerp((double) partialTick, entity.yo, entity.getY()),
                 Mth.lerp((double) partialTick, entity.zo, entity.getZ()));
         float bodyYaw = Mth.rotLerp(partialTick, entity.yBodyRotO, entity.yBodyRot);
+        float headYaw = Mth.rotLerp(partialTick, entity.yHeadRotO, entity.yHeadRot);
+        float headPitch = Mth.rotLerp(partialTick, entity.xRotO, entity.getXRot());
         DinosaurGaitState gait =
                 DinosaurGaitState.sampleInterpolated(entity, config, partialTick);
-        return sampleAt(entity, config, origin, bodyYaw, gait);
+        return sampleAt(
+                entity,
+                config,
+                origin,
+                bodyYaw,
+                gait,
+                orientationPose(config, bodyYaw, headYaw, headPitch));
     }
 
     /**
@@ -52,8 +60,13 @@ public final class DinosaurTerrainSampler {
                 entity,
                 config,
                 entity.position(),
-                entity.yBodyRot,
-                DinosaurGaitState.sampleAuthoritative(entity, config));
+                entity.getYRot(),
+                DinosaurGaitState.sampleAuthoritative(entity, config),
+                orientationPose(
+                        config,
+                        entity.getYRot(),
+                        entity.yHeadRot,
+                        entity.getXRot()));
     }
 
     /**
@@ -70,7 +83,12 @@ public final class DinosaurTerrainSampler {
                 config,
                 origin,
                 bodyYawDegrees,
-                DinosaurGaitState.sampleAuthoritative(entity, config));
+                DinosaurGaitState.sampleAuthoritative(entity, config),
+                orientationPose(
+                        config,
+                        bodyYawDegrees,
+                        entity.yHeadRot,
+                        entity.getXRot()));
     }
 
     /**
@@ -83,6 +101,26 @@ public final class DinosaurTerrainSampler {
             Vec3 origin,
             float bodyYawDegrees,
             DinosaurGaitState gait) {
+        return sampleAt(
+                entity,
+                config,
+                origin,
+                bodyYawDegrees,
+                gait,
+                orientationPose(
+                        config,
+                        bodyYawDegrees,
+                        entity.yHeadRot,
+                        entity.getXRot()));
+    }
+
+    private static DinosaurProceduralPose sampleAt(
+            LivingEntity entity,
+            DinosaurProceduralConfig config,
+            Vec3 origin,
+            float bodyYawDegrees,
+            DinosaurGaitState gait,
+            DinosaurOrientationPose orientation) {
         Level level = entity.level();
         double modelYawRadians = Math.toRadians(180.0F - bodyYawDegrees);
         double sinYaw = Math.sin(modelYawRadians);
@@ -178,6 +216,7 @@ public final class DinosaurTerrainSampler {
         return new DinosaurProceduralPose(
                 origin,
                 bodyYawDegrees,
+                orientation,
                 bodyPitch,
                 bodyRoll,
                 bodyTranslationY,
@@ -192,6 +231,28 @@ public final class DinosaurTerrainSampler {
                 samples,
                 legs,
                 stability);
+    }
+
+    private static DinosaurOrientationPose orientationPose(
+            DinosaurProceduralConfig config,
+            float bodyYawDegrees,
+            float headYawDegrees,
+            float headPitchDegrees) {
+        float relativeYawDegrees = Mth.clamp(
+                Mth.wrapDegrees(headYawDegrees - bodyYawDegrees),
+                -config.orientation().maxNeckYawDegrees(),
+                config.orientation().maxNeckYawDegrees());
+        float pitchDegrees = Mth.clamp(
+                headPitchDegrees,
+                -config.orientation().maxPitchUpDegrees(),
+                config.orientation().maxPitchDownDegrees());
+        float yawRadians = (float) Math.toRadians(relativeYawDegrees);
+        float pitchRadians = (float) Math.toRadians(pitchDegrees);
+        return new DinosaurOrientationPose(
+                yawRadians,
+                pitchRadians,
+                yawRadians,
+                pitchRadians);
     }
 
     /**

@@ -7,12 +7,16 @@ import com.geckolib.animation.AnimationController;
 import com.geckolib.animation.RawAnimation;
 import com.geckolib.util.GeckoLibUtil;
 import com.wachi.mse.entity.dinosaur.config.DinosaurProceduralConfig;
+import com.wachi.mse.entity.dinosaur.control.DinosaurBodyRotationControl;
+import com.wachi.mse.entity.dinosaur.control.DinosaurLookControl;
+import com.wachi.mse.entity.dinosaur.control.DinosaurMoveControl;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurBalanceController;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.ai.control.BodyRotationControl;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
@@ -34,6 +38,14 @@ public final class PrototypeDinosaurEntity
 
     public PrototypeDinosaurEntity(EntityType<? extends PrototypeDinosaurEntity> entityType, Level level) {
         super(entityType, level);
+        this.moveControl = new DinosaurMoveControl(
+                this,
+                this.proceduralConfig().orientation());
+        this.lookControl = new DinosaurLookControl(
+                this,
+                this.proceduralConfig().orientation());
+        this.yBodyRot = this.getYRot();
+        this.yHeadRot = this.getYRot();
     }
 
     public static AttributeSupplier.Builder createAttributes() {
@@ -49,6 +61,28 @@ public final class PrototypeDinosaurEntity
         this.goalSelector.addGoal(5, new RandomStrollGoal(this, 0.8));
         this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 12.0F));
         this.goalSelector.addGoal(7, new RandomLookAroundGoal(this));
+    }
+
+    @Override
+    protected BodyRotationControl createBodyControl() {
+        return new DinosaurBodyRotationControl(this);
+    }
+
+    @Override
+    public int getMaxHeadXRot() {
+        return Math.round(Math.max(
+                this.proceduralConfig().orientation().maxPitchUpDegrees(),
+                this.proceduralConfig().orientation().maxPitchDownDegrees()));
+    }
+
+    @Override
+    public int getMaxHeadYRot() {
+        return Math.round(this.proceduralConfig().orientation().maxNeckYawDegrees());
+    }
+
+    @Override
+    public int getHeadRotSpeed() {
+        return Math.round(this.proceduralConfig().orientation().headYawSpeedDegreesPerTick());
     }
 
     @Override

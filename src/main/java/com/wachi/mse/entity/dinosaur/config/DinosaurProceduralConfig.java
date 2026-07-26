@@ -9,6 +9,7 @@ public record DinosaurProceduralConfig(
         List<DinosaurLegRig> legs,
         GaitConfig gait,
         DinosaurStabilityConfig stability,
+        DinosaurOrientationConfig orientation,
         double bodyPivotHeight,
         double footContactHeight,
         double contactPatchRadius,
@@ -92,6 +93,24 @@ public record DinosaurProceduralConfig(
                     0.02F,
                     0.006,
                     0.055),
+            new DinosaurOrientationConfig(
+                    List.of(
+                            new DinosaurLookBone("neck_1", 0.25F, 0.20F),
+                            new DinosaurLookBone("neck_2", 0.35F, 0.35F),
+                            new DinosaurLookBone("head", 0.40F, 0.45F)),
+                    60.0F,
+                    50.0F,
+                    35.0F,
+                    25.0F,
+                    30.0F,
+                    5.0F,
+                    4.0F,
+                    3.0F,
+                    3.0F,
+                    30.0F,
+                    0.001,
+                    0.35,
+                    12.0F),
             14.0 / 16.0,
             0.0,
             2.0 / 16.0,
@@ -117,6 +136,7 @@ public record DinosaurProceduralConfig(
         if (bones == null
                 || gait == null
                 || stability == null
+                || orientation == null
                 || legs.size() < 2
                 || legIds.size() != legs.size()
                 || bodyPivotHeight <= footContactHeight

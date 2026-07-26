@@ -2,7 +2,7 @@
 
 Fecha de inspección: 2026-07-26.
 
-Estado: fase 3 implementada. La entidad mínima se documenta en
+Estado: orientación gradual implementada sobre la fase de terreno e IK. La entidad mínima se documenta en
 `dinosaur_prototype_phase.md`; el muestreo de terreno, la marcha compartida y
 el IK de dos segmentos se documentan en
 `dinosaur_procedural_terrain_phase.md`. Las patas resuelven primero el
@@ -176,7 +176,9 @@ entidad se reutilizará antes de añadir nuevos datos sincronizados.
    limitada para conservar alcance. Implementado.
 5. Puerta 2: comparar caminando y quieto, ajustar alcance, altura de vuelo y
    suavizado con el overlay F3.
-6. Giro gradual: yaw lógico de servidor y distribución visual `neck_1`/`neck_2`/`head`; añadir pitch después del yaw.
+6. Giro gradual: yaw lógico de servidor, giro corporal ligado al
+   desplazamiento y distribución visual `neck_1`/`neck_2`/`head` para yaw y
+   pitch. Implementado.
 7. Puerta 3: probar objetivos a 30, 60, 90 y 180 grados, ataques y pérdida del objetivo.
 8. Multipartes: empezar con cabeza, torso y cola; ampliar a cuello/cadera solo si son estables.
 9. Puerta 4: melee, proyectiles, muerte, descarga de chunks y servidor dedicado.

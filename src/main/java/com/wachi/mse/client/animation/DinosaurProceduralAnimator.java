@@ -3,10 +3,12 @@ package com.wachi.mse.client.animation;
 import com.geckolib.animation.state.BoneSnapshot;
 import com.geckolib.renderer.base.BoneSnapshots;
 import com.wachi.mse.entity.dinosaur.config.DinosaurLegRig;
+import com.wachi.mse.entity.dinosaur.config.DinosaurLookBone;
 import com.wachi.mse.entity.dinosaur.config.DinosaurProceduralConfig;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurBoneRotation;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurLegIkSolver;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurLegPose;
+import com.wachi.mse.entity.dinosaur.procedural.DinosaurOrientationPose;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurProceduralPose;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +36,7 @@ public final class DinosaurProceduralAnimator {
                     target.targetPitchRadians(),
                     target.targetRollRadians(),
                     target.targetBodyTranslationYBlocks(),
+                    target.orientation(),
                     target.legs(),
                     renderTime);
             this.smoothedPoses.put(entity, initial);
@@ -41,6 +44,7 @@ public final class DinosaurProceduralAnimator {
                     initial.pitch(),
                     initial.roll(),
                     initial.bodyTranslationY(),
+                    initial.orientation(),
                     initial.legs());
         }
         if (renderTime == previous.renderTime()) {
@@ -48,6 +52,7 @@ public final class DinosaurProceduralAnimator {
                     previous.pitch(),
                     previous.roll(),
                     previous.bodyTranslationY(),
+                    previous.orientation(),
                     previous.legs());
         }
 
@@ -59,11 +64,35 @@ public final class DinosaurProceduralAnimator {
                 previous.bodyTranslationY(),
                 target.targetBodyTranslationYBlocks(),
                 alpha);
+        float orientationAlpha = (float) (1.0 - Math.exp(
+                -config.orientation().visualSmoothingResponsePerSecond()
+                        * elapsedSeconds));
+        DinosaurOrientationPose orientation = target.orientation().withSmoothedValues(
+                previous.orientation().yawRadians()
+                        + angularDelta(
+                                previous.orientation().yawRadians(),
+                                target.orientation().targetYawRadians())
+                                * orientationAlpha,
+                lerp(
+                        previous.orientation().pitchRadians(),
+                        target.orientation().targetPitchRadians(),
+                        orientationAlpha));
         List<DinosaurLegPose> legs = smoothLegs(previous.legs(), target.legs(), alpha);
         this.smoothedPoses.put(
                 entity,
-                new SmoothedPose(pitch, roll, bodyTranslationY, legs, renderTime));
-        return target.withSmoothedValues(pitch, roll, bodyTranslationY, legs);
+                new SmoothedPose(
+                        pitch,
+                        roll,
+                        bodyTranslationY,
+                        orientation,
+                        legs,
+                        renderTime));
+        return target.withSmoothedValues(
+                pitch,
+                roll,
+                bodyTranslationY,
+                orientation,
+                legs);
     }
 
     public void apply(
@@ -79,6 +108,25 @@ public final class DinosaurProceduralAnimator {
                     config.leg(leg.legId()),
                     compensateBodyAnimation(config, leg, pose, animationBodyY),
                     snapshots);
+        }
+        applyLookPose(pose, config, snapshots);
+    }
+
+    private static void applyLookPose(
+            DinosaurProceduralPose pose,
+            DinosaurProceduralConfig config,
+            BoneSnapshots snapshots) {
+        float pitchRelativeToTiltedBody =
+                pose.orientation().pitchRadians() - pose.pitchRadians();
+        for (DinosaurLookBone bone : config.orientation().lookBones()) {
+            snapshots.get(bone.boneName()).ifPresent(snapshot -> {
+                snapshot.setRotY(
+                        snapshot.getRotY()
+                                + pose.orientation().yawRadians() * bone.yawWeight());
+                snapshot.setRotX(
+                        snapshot.getRotX()
+                                + pitchRelativeToTiltedBody * bone.pitchWeight());
+            });
         }
     }
 
@@ -231,6 +279,7 @@ public final class DinosaurProceduralAnimator {
             float pitch,
             float roll,
             float bodyTranslationY,
+            DinosaurOrientationPose orientation,
             List<DinosaurLegPose> legs,
             double renderTime) {
     }

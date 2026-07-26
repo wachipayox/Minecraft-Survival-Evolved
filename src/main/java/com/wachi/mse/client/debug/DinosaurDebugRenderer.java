@@ -110,6 +110,7 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
         }
 
         emitStabilityGizmos(pose);
+        emitOrientationGizmos(pose, dinosaur);
         Gizmos.billboardText(
                 String.format(
                         Locale.ROOT,
@@ -131,7 +132,9 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
         Gizmos.billboardText(
                 String.format(
                         Locale.ROOT,
-                        "gait %.2f / activity %.2f",
+                        "neck %+.1f\u00b0/%+.1f\u00b0 / gait %.2f / activity %.2f",
+                        Math.toDegrees(pose.orientation().yawRadians()),
+                        Math.toDegrees(pose.orientation().pitchRadians()),
                         pose.gait().phase(),
                         pose.gait().activity()),
                 pose.origin().add(0.0, dinosaur.getBbHeight() + 0.18, 0.0),
@@ -160,6 +163,27 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
                 TextGizmo.Style
                         .forColorAndCentered(stabilityColor(stability))
                         .withScale(0.2F));
+    }
+
+    private static void emitOrientationGizmos(
+            DinosaurProceduralPose pose,
+            LivingEntity dinosaur) {
+        Vec3 origin = pose.origin().add(0.0, dinosaur.getBbHeight() * 0.72, 0.0);
+        Vec3 bodyDirection = Vec3.directionFromRotation(0.0F, pose.bodyYawDegrees());
+        float lookYaw = pose.bodyYawDegrees()
+                + (float) Math.toDegrees(pose.orientation().yawRadians());
+        float lookPitch = (float) Math.toDegrees(pose.orientation().pitchRadians());
+        Vec3 lookDirection = Vec3.directionFromRotation(lookPitch, lookYaw);
+        Gizmos.arrow(
+                origin,
+                origin.add(bodyDirection.scale(1.1)),
+                0xFF3388FF,
+                2.0F);
+        Gizmos.arrow(
+                origin.add(0.0, 0.05, 0.0),
+                origin.add(lookDirection.scale(1.25)).add(0.0, 0.05, 0.0),
+                0xFFFF55CC,
+                2.5F);
     }
 
     private static void emitStabilityGizmos(DinosaurProceduralPose pose) {

@@ -12,6 +12,7 @@ import net.minecraft.world.phys.Vec3;
 public record DinosaurProceduralPose(
         Vec3 origin,
         float bodyYawDegrees,
+        DinosaurOrientationPose orientation,
         float pitchRadians,
         float rollRadians,
         float bodyTranslationYBlocks,
@@ -72,10 +73,12 @@ public record DinosaurProceduralPose(
             float pitch,
             float roll,
             float bodyTranslationY,
+            DinosaurOrientationPose smoothedOrientation,
             List<DinosaurLegPose> smoothedLegs) {
         return new DinosaurProceduralPose(
                 this.origin,
                 this.bodyYawDegrees,
+                smoothedOrientation,
                 pitch,
                 roll,
                 bodyTranslationY,
