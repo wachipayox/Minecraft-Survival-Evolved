@@ -341,6 +341,8 @@ especies que no tengan exactamente cuatro extremidades.
 - el mismo vector se añade después del movimiento de montura, por lo que llevar
   pasajero no inmuniza al dinosaurio frente a una esquina;
 - el modelo fuente conserva sus 23 huesos y no fue reexportado;
+- la variante gigante reutiliza ese mismo rig con una configuración espacial
+  derivada a escala `10×`, sin constantes específicas dentro del solver;
 - no se usa `onGround()` ni estado de IA para calcular la pose.
 
 El avance horizontal individual de cada paso permanece para una fase

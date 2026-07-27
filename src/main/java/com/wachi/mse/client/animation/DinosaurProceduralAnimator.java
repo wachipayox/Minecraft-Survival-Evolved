@@ -150,7 +150,7 @@ public final class DinosaurProceduralAnimator {
             BoneSnapshots snapshots) {
         float animationBodyY = snapshots
                 .get(config.bones().body())
-                .map(snapshot -> applyBodyPose(snapshot, pose))
+                .map(snapshot -> applyBodyPose(snapshot, pose, config))
                 .orElse(0.0F);
         for (DinosaurLegPose leg : pose.legs()) {
             applyLegPose(
@@ -179,11 +179,19 @@ public final class DinosaurProceduralAnimator {
         }
     }
 
-    private static float applyBodyPose(BoneSnapshot body, DinosaurProceduralPose pose) {
-        float animationBodyY = body.getTranslateY() / MODEL_UNITS_PER_BLOCK;
+    private static float applyBodyPose(
+            BoneSnapshot body,
+            DinosaurProceduralPose pose,
+            DinosaurProceduralConfig config) {
+        float animationBodyY =
+                body.getTranslateY()
+                        / MODEL_UNITS_PER_BLOCK
+                        * config.modelScale();
         body.setTranslateY(
                 body.getTranslateY()
-                        + pose.bodyTranslationYBlocks() * MODEL_UNITS_PER_BLOCK);
+                        + pose.bodyTranslationYBlocks()
+                                * MODEL_UNITS_PER_BLOCK
+                                / config.modelScale());
         body.setRotX(body.getRotX() + pose.pitchRadians());
         body.setRotZ(body.getRotZ() + pose.rollRadians());
         return animationBodyY;

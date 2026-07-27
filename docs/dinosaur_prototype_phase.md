@@ -20,6 +20,24 @@ Puede invocarse en un mundo con:
 /summon mc_evolved:prototype_dinosaur ~ ~ ~
 ```
 
+## Variante gigante de pruebas
+
+`mc_evolved:giant_prototype_dinosaur` hereda íntegramente la entidad del
+prototipo y reutiliza el mismo modelo, textura, animaciones y renderer:
+
+```mcfunction
+/summon mc_evolved:giant_prototype_dinosaur ~ ~ ~
+```
+
+Su atributo vanilla `minecraft:scale` vale `10.0`. La hitbox base definitiva
+de `1.2 × 1.4` se convierte por tanto en una hitbox física de `12 × 14`
+bloques, y el asiento y la altura de ojos siguen esa misma escala. La
+configuración procedural se deriva mediante escalado geométrico: offsets,
+longitudes y radios de las patas, sondas de terreno, soporte, corrección
+vertical, empuje de caída, distancia de anticipación y radio de giro aumentan
+de forma coherente. Los ángulos, fases de marcha y nombres de huesos no se
+duplican ni cambian.
+
 ## Activo temporal
 
 Se creó un modelo temporal y sustituible en Blockbench para poder validar la
@@ -47,6 +65,8 @@ procedurales pertenecen a fases posteriores.
 - La auditoría local confirmó textura 128 × 128, extremos de bucle coincidentes
   y claves nativas persistentes tras cerrar y reabrir el `.bbmodel`.
 - `gradlew clean build` terminó correctamente.
+- El servidor aislado invocó simultáneamente el prototipo normal y el gigante;
+  confirmó `Scale = 10.0` y `Step Height = 6.0` para la variante gigante.
 - El JAR contiene clases, descriptor, configuración de Mixins y los tres
   recursos runtime de GeckoLib.
 - El JAR no contiene el proyecto `.bbmodel`.

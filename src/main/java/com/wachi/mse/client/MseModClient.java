@@ -19,6 +19,9 @@ public final class MseModClient {
 
     private void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
         event.registerEntityRenderer(MseEntities.PROTOTYPE_DINOSAUR.get(), PrototypeDinosaurRenderer::new);
+        event.registerEntityRenderer(
+                MseEntities.GIANT_PROTOTYPE_DINOSAUR.get(),
+                PrototypeDinosaurRenderer::new);
     }
 
     private void registerDebugRenderers(RegisterDebugRenderersEvent event) {

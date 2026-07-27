@@ -69,11 +69,15 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
     private static void emitPoseGizmos(
             DinosaurProceduralPose pose,
             LivingEntity dinosaur) {
+        float modelScale = ((ProceduralDinosaur) dinosaur)
+                .proceduralConfig()
+                .modelScale();
+        float markerScale = (float) Math.sqrt(modelScale);
         for (DinosaurTerrainSample sample : pose.samples()) {
             DinosaurLegPose leg = pose.leg(sample.legId());
             int color = sampleColor(sample);
             Vec3 point = sample.position();
-            Gizmos.point(point, color, POINT_SIZE);
+            Gizmos.point(point, color, POINT_SIZE * markerScale);
             Gizmos.line(
                     new Vec3(point.x, pose.origin().y, point.z),
                     point,
@@ -89,7 +93,10 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
                         pose.origin().y + leg.solvedFootHeightOffset(),
                         point.z);
                 int ikColor = leg.reachable() ? 0xFF55FF55 : 0xFFFF55FF;
-                Gizmos.point(solved, ikColor, POINT_SIZE * 0.75F);
+                Gizmos.point(
+                        solved,
+                        ikColor,
+                        POINT_SIZE * 0.75F * markerScale);
                 Gizmos.line(target, solved, ikColor, 1.5F);
             }
             Gizmos.billboardText(
@@ -111,14 +118,14 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
                             leg != null && leg.forcedMaximumExtension()
                                     ? " MAX"
                                     : ""),
-                    point.add(0.0, 0.14, 0.0),
+                    point.add(0.0, 0.14 * markerScale, 0.0),
                     TextGizmo.Style
                             .forColorAndCentered(sampleTextColor(sample))
-                            .withScale(0.2F));
+                            .withScale(0.2F * markerScale));
         }
 
-        emitStabilityGizmos(pose);
-        emitOrientationGizmos(pose, dinosaur);
+        emitStabilityGizmos(pose, modelScale, markerScale);
+        emitOrientationGizmos(pose, dinosaur, modelScale);
         Gizmos.billboardText(
                 String.format(
                         Locale.ROOT,
@@ -133,10 +140,13 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
                         pose.legs().size(),
                         pose.validSampleCount(),
                         pose.samples().size()),
-                pose.origin().add(0.0, dinosaur.getBbHeight() + 0.4, 0.0),
+                pose.origin().add(
+                        0.0,
+                        dinosaur.getBbHeight() + 0.4 * markerScale,
+                        0.0),
                 TextGizmo.Style
                         .forColorAndCentered(poseColor(pose))
-                        .withScale(0.25F));
+                        .withScale(0.25F * markerScale));
         Gizmos.billboardText(
                 String.format(
                         Locale.ROOT,
@@ -145,10 +155,13 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
                         Math.toDegrees(pose.orientation().pitchRadians()),
                         pose.gait().phase(),
                         pose.gait().activity()),
-                pose.origin().add(0.0, dinosaur.getBbHeight() + 0.18, 0.0),
+                pose.origin().add(
+                        0.0,
+                        dinosaur.getBbHeight() + 0.18 * markerScale,
+                        0.0),
                 TextGizmo.Style
                         .forColorAndCentered(0xFF80D8FF)
-                        .withScale(0.2F));
+                        .withScale(0.2F * markerScale));
         DinosaurStabilityAssessment stability = pose.stability();
         Gizmos.billboardText(
                 String.format(
@@ -170,15 +183,19 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
                         stability
                                 .footprintSupport()
                                 .areaBlocksSquared()),
-                pose.origin().add(0.0, dinosaur.getBbHeight() - 0.04, 0.0),
+                pose.origin().add(
+                        0.0,
+                        dinosaur.getBbHeight() - 0.04 * markerScale,
+                        0.0),
                 TextGizmo.Style
                         .forColorAndCentered(stabilityColor(stability))
-                        .withScale(0.2F));
+                        .withScale(0.2F * markerScale));
     }
 
     private static void emitOrientationGizmos(
             DinosaurProceduralPose pose,
-            LivingEntity dinosaur) {
+            LivingEntity dinosaur,
+            float modelScale) {
         Vec3 origin = pose.origin().add(0.0, dinosaur.getBbHeight() * 0.72, 0.0);
         Vec3 bodyDirection = Vec3.directionFromRotation(0.0F, pose.bodyYawDegrees());
         float lookYaw = pose.bodyYawDegrees()
@@ -187,17 +204,21 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
         Vec3 lookDirection = Vec3.directionFromRotation(lookPitch, lookYaw);
         Gizmos.arrow(
                 origin,
-                origin.add(bodyDirection.scale(1.1)),
+                origin.add(bodyDirection.scale(1.1 * modelScale)),
                 0xFF3388FF,
                 2.0F);
         Gizmos.arrow(
                 origin.add(0.0, 0.05, 0.0),
-                origin.add(lookDirection.scale(1.25)).add(0.0, 0.05, 0.0),
+                origin.add(lookDirection.scale(1.25 * modelScale))
+                        .add(0.0, 0.05, 0.0),
                 0xFFFF55CC,
                 2.5F);
     }
 
-    private static void emitStabilityGizmos(DinosaurProceduralPose pose) {
+    private static void emitStabilityGizmos(
+            DinosaurProceduralPose pose,
+            float modelScale,
+            float markerScale) {
         DinosaurStabilityAssessment stability = pose.stability();
         List<Vec3> hull = stability.supportHull();
         for (int index = 0; index < hull.size(); index++) {
@@ -207,19 +228,27 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
         }
 
         Vec3 center = stability.centerOfMassWorld().add(0.0, 0.08, 0.0);
-        Gizmos.point(center, stabilityColor(stability), POINT_SIZE);
+        Gizmos.point(
+                center,
+                stabilityColor(stability),
+                POINT_SIZE * markerScale);
         if (stability.footprintSupport().present()) {
             Vec3 footprintCenter = stability
                     .footprintSupport()
                     .centerWorld()
                     .add(0.0, 0.04, 0.0);
-            Gizmos.point(footprintCenter, 0xFF00FFFF, POINT_SIZE);
+            Gizmos.point(
+                    footprintCenter,
+                    0xFF00FFFF,
+                    POINT_SIZE * markerScale);
             Gizmos.line(footprintCenter, center, 0xFF00FFFF, 1.5F);
         }
         if (stability.requiresRecovery()) {
             Gizmos.line(
                     center,
-                    center.add(stability.fallDirectionWorld().scale(0.75)),
+                    center.add(
+                            stability.fallDirectionWorld()
+                                    .scale(0.75 * modelScale)),
                     0xFFFF3333,
                     3.0F);
         }

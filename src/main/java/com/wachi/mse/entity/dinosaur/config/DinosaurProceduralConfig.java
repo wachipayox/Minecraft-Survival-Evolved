@@ -10,6 +10,7 @@ public record DinosaurProceduralConfig(
         GaitConfig gait,
         DinosaurStabilityConfig stability,
         DinosaurOrientationConfig orientation,
+        float modelScale,
         double bodyPivotHeight,
         double footContactHeight,
         double contactPatchRadius,
@@ -114,6 +115,7 @@ public record DinosaurProceduralConfig(
                     0.8,
                     4.0,
                     12.0F),
+            1.0F,
             14.0 / 16.0,
             0.0,
             2.0 / 16.0,
@@ -131,6 +133,8 @@ public record DinosaurProceduralConfig(
             (float) Math.toRadians(10.0),
             (float) Math.toRadians(7.0),
             9.0F);
+    public static final DinosaurProceduralConfig GIANT_PROTOTYPE =
+            PROTOTYPE.scaled(10.0F);
 
     public DinosaurProceduralConfig {
         legs = List.copyOf(legs);
@@ -140,6 +144,8 @@ public record DinosaurProceduralConfig(
                 || gait == null
                 || stability == null
                 || orientation == null
+                || !Float.isFinite(modelScale)
+                || modelScale <= 0.0F
                 || legs.size() < 2
                 || legIds.size() != legs.size()
                 || bodyPivotHeight <= footContactHeight
@@ -171,6 +177,90 @@ public record DinosaurProceduralConfig(
         if (slopeDeadzoneRadians < 0.0F || smoothingResponsePerSecond <= 0.0F) {
             throw new IllegalArgumentException("Procedural smoothing values are invalid");
         }
+    }
+
+    /**
+     * Produces a geometrically similar species configuration without
+     * duplicating its rig. Angles and normalized gait values remain
+     * unchanged; every world-space distance is scaled uniformly.
+     */
+    public DinosaurProceduralConfig scaled(float scale) {
+        if (!Float.isFinite(scale) || scale <= 0.0F) {
+            throw new IllegalArgumentException("Dinosaur scale must be positive and finite");
+        }
+        if (scale == 1.0F) {
+            return this;
+        }
+
+        List<DinosaurLegRig> scaledLegs = this.legs.stream()
+                .map(leg -> new DinosaurLegRig(
+                        leg.id(),
+                        leg.shortName(),
+                        leg.upperBone(),
+                        leg.lowerBone(),
+                        leg.footBone(),
+                        leg.modelXOffset() * scale,
+                        leg.modelZOffset() * scale,
+                        leg.hipHeight() * scale,
+                        leg.kneeHeight() * scale,
+                        leg.footPivotHeight() * scale,
+                        leg.kneeBendDirection(),
+                        leg.swingPhase()))
+                .toList();
+        DinosaurStabilityConfig scaledStability =
+                new DinosaurStabilityConfig(
+                        this.stability.centerOfMassModelX() * scale,
+                        this.stability.centerOfMassModelZ() * scale,
+                        this.stability.footSupportRadius() * scale,
+                        this.stability.awarenessBeyondReachLegLengths(),
+                        this.stability.toleratedOutsideDistance() * scale,
+                        this.stability.recoveryTicks(),
+                        this.stability.maximumActivityForStaticBalance(),
+                        this.stability.fallAccelerationPerTick() * scale,
+                        this.stability.maximumFallHorizontalSpeed() * scale,
+                        this.stability.airborneFallAssistTicks());
+        DinosaurOrientationConfig scaledOrientation =
+                new DinosaurOrientationConfig(
+                        this.orientation.lookBones(),
+                        this.orientation.maxNeckYawDegrees(),
+                        this.orientation.bodyTurnStartYawDegrees(),
+                        this.orientation.bodyTurnStopYawDegrees(),
+                        this.orientation.maxPitchUpDegrees(),
+                        this.orientation.maxPitchDownDegrees(),
+                        this.orientation.headYawSpeedDegreesPerTick(),
+                        this.orientation.headPitchSpeedDegreesPerTick(),
+                        this.orientation.neckRecenteringSpeedDegreesPerTick(),
+                        this.orientation.maxBodyYawChangeDegreesPerTick() / scale,
+                        this.orientation.steeringDegreesPerBlock() / scale,
+                        this.orientation.minimumTurningDistance() * scale,
+                        this.orientation.lookTurnSpeedModifier(),
+                        this.orientation.pathLookAheadRadiusMultiplier(),
+                        this.orientation.maximumPathLookAheadBlocks() * scale,
+                        this.orientation.visualSmoothingResponsePerSecond());
+        return new DinosaurProceduralConfig(
+                this.bones,
+                scaledLegs,
+                this.gait,
+                scaledStability,
+                scaledOrientation,
+                this.modelScale * scale,
+                this.bodyPivotHeight * scale,
+                this.footContactHeight * scale,
+                this.contactPatchRadius * scale,
+                this.sampleAbove * scale,
+                this.sampleBelow * scale,
+                this.maxBodyVerticalCorrection * scale,
+                this.swingFootLift * scale,
+                this.minLegReachFraction,
+                this.maxLegReachFraction,
+                this.maxPitchRadians,
+                this.maxRollRadians,
+                this.slopeDeadzoneRadians,
+                this.bodyTiltStartExtensionFraction,
+                this.bodyTiltSlopeShare,
+                this.maxHybridPitchRadians,
+                this.maxHybridRollRadians,
+                this.smoothingResponsePerSecond);
     }
 
     public DinosaurLegRig leg(String id) {

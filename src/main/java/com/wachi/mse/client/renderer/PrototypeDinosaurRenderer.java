@@ -24,6 +24,10 @@ public final class PrototypeDinosaurRenderer
             DataTicket.create(
                     MseMod.MOD_ID + ":dinosaur_procedural_pose",
                     DinosaurProceduralPose.class);
+    private static final DataTicket<DinosaurProceduralConfig> PROCEDURAL_CONFIG =
+            DataTicket.create(
+                    MseMod.MOD_ID + ":dinosaur_procedural_config",
+                    DinosaurProceduralConfig.class);
 
     private final DinosaurProceduralAnimator proceduralAnimator = new DinosaurProceduralAnimator();
 
@@ -46,6 +50,7 @@ public final class PrototypeDinosaurRenderer
         DinosaurProceduralPose smoothedPose =
                 this.proceduralAnimator.smooth(animatable, sampledPose, config, partialTick);
         ((GeoRenderState) renderState).addGeckolibData(PROCEDURAL_POSE, smoothedPose);
+        ((GeoRenderState) renderState).addGeckolibData(PROCEDURAL_CONFIG, config);
         DinosaurDebugPoseStore.update(animatable, smoothedPose);
     }
 
@@ -54,10 +59,12 @@ public final class PrototypeDinosaurRenderer
             RenderPassInfo<LivingEntityRenderState> renderPassInfo,
             BoneSnapshots snapshots) {
         DinosaurProceduralPose pose = renderPassInfo.getGeckolibData(PROCEDURAL_POSE);
-        if (pose != null) {
+        DinosaurProceduralConfig config =
+                renderPassInfo.getGeckolibData(PROCEDURAL_CONFIG);
+        if (pose != null && config != null) {
             this.proceduralAnimator.apply(
                     pose,
-                    DinosaurProceduralConfig.PROTOTYPE,
+                    config,
                     snapshots);
         }
     }

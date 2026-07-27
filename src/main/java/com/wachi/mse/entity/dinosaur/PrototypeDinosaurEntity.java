@@ -32,7 +32,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
-public final class PrototypeDinosaurEntity
+public class PrototypeDinosaurEntity
         extends PathfinderMob
         implements GeoEntity, ProceduralDinosaur {
     private static final RawAnimation IDLE_ANIMATION =
