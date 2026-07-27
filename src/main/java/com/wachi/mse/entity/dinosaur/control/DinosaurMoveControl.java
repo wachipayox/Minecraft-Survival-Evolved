@@ -44,6 +44,31 @@ public final class DinosaurMoveControl extends MoveControl {
         return this.lookTurnTicks > 0;
     }
 
+    /**
+     * Applies rider steering through the same displacement-limited yaw rule
+     * used by path following. Looking around while stationary therefore
+     * cannot rotate the dinosaur in place.
+     */
+    public void steerRiddenToward(float targetYawDegrees) {
+        double lastTickDistance = Math.sqrt(
+                Mth.square(this.mob.getX() - this.mob.xo)
+                        + Mth.square(this.mob.getZ() - this.mob.zo));
+        float maximumChange =
+                maximumYawChangeForDisplacement(lastTickDistance);
+        if (maximumChange > 0.0F) {
+            this.mob.setYRot(super.rotlerp(
+                    this.mob.getYRot(),
+                    targetYawDegrees,
+                    maximumChange));
+        }
+    }
+
+    public float speedMultiplierForHeading(float targetYawDegrees) {
+        float headingError = Math.abs(Mth.wrapDegrees(
+                targetYawDegrees - this.mob.getYRot()));
+        return headingSpeedMultiplier(headingError);
+    }
+
     @Override
     public void setWait() {
         super.setWait();
@@ -62,7 +87,7 @@ public final class DinosaurMoveControl extends MoveControl {
             if (pathMovement) {
                 this.mob.setSpeed(
                         this.mob.getSpeed()
-                                * pathSpeedMultiplier(pathHeadingError));
+                                * headingSpeedMultiplier(pathHeadingError));
             }
             ageLookTurnRequest();
             return;
@@ -120,7 +145,7 @@ public final class DinosaurMoveControl extends MoveControl {
         return Math.abs(Mth.wrapDegrees(targetYaw - this.mob.getYRot()));
     }
 
-    private float pathSpeedMultiplier(float headingError) {
+    private float headingSpeedMultiplier(float headingError) {
         float startSlowing = this.config.bodyTurnStopYawDegrees();
         float fullySlowed = 90.0F;
         float progress = Mth.clamp(
@@ -135,13 +160,18 @@ public final class DinosaurMoveControl extends MoveControl {
     }
 
     private float maximumYawChangeForLastDisplacement() {
+        return maximumYawChangeForDisplacement(this.lastHorizontalDistance);
+    }
+
+    private float maximumYawChangeForDisplacement(
+            double horizontalDistance) {
         if ((!this.mob.onGround() && !this.mob.isInWater())
-                || this.lastHorizontalDistance < this.config.minimumTurningDistance()) {
+                || horizontalDistance < this.config.minimumTurningDistance()) {
             return 0.0F;
         }
         return Math.min(
                 this.config.maxBodyYawChangeDegreesPerTick(),
-                (float) (this.lastHorizontalDistance
+                (float) (horizontalDistance
                         * this.config.steeringDegreesPerBlock()));
     }
 

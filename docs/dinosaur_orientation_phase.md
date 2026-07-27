@@ -63,6 +63,35 @@ segura se conserva el comportamiento vanilla. Al acercarse a un rumbo de 90
 grados, el avance baja progresivamente hasta la velocidad de maniobra, pero
 nunca se detiene para pivotar.
 
+## Montura de prueba y neutralidad
+
+El prototipo se puede montar mediante una interacción normal, sin silla,
+siempre que el jugador no mantenga la acción secundaria. Al montarlo se
+cancela la ruta y el objetivo hostil que tuviera; agacharse conserva el uso
+normal para desmontar.
+
+La cámara queda libre. Su yaw representa el rumbo que solicita el jinete,
+pero nunca se copia directamente al yaw corporal del dinosaurio:
+
+- avanzar y retroceder producen únicamente movimiento longitudinal;
+- las teclas laterales no crean strafe;
+- el yaw usa los mismos límites de grados por tick y por bloque recorrido que
+  `DinosaurMoveControl` aplica al pathfinding;
+- el avance usa la misma reducción de velocidad cuando el error de rumbo es
+  grande;
+- mover la cámara estando quieto solo orienta cuello y cabeza dentro de sus
+  límites, sin permitir un pivote corporal;
+- al avanzar hacia un rumbo distinto, el cuerpo converge describiendo una
+  curva.
+
+La conducción no ejecuta A*: las colisiones siguen siendo las normales de
+Minecraft, mientras que la dirección, la velocidad y el radio de giro
+mantienen las restricciones físicas de la especie.
+
+El prototipo también es neutral. No elige jugadores de forma preventiva,
+pero `HurtByTargetGoal` identifica a quien le haga daño y
+`MeleeAttackGoal` lo persigue y ataca con su atributo de daño configurado.
+
 ## Configuración por especie
 
 `DinosaurOrientationConfig` pertenece a `DinosaurProceduralConfig`; no
@@ -92,9 +121,11 @@ por bloque recorrido.
 
 ## Cliente y servidor
 
-El servidor es autoritativo sobre `getYRot()`, `yHeadRot`, `xRot`, avance y
-navegación. Se reutiliza la sincronización vanilla de esas rotaciones; no se
-envían paquetes de huesos.
+Sin jinete, el servidor es autoritativo sobre `getYRot()`, `yHeadRot`,
+`xRot`, avance y navegación. Durante la montura se conserva el modelo vanilla
+del pasajero controlador: cliente y servidor ejecutan las mismas fórmulas de
+dirección y velocidad y la entidad usa la sincronización normal de vehículos.
+En ninguno de los casos se envían paquetes de huesos.
 
 El cliente interpola cuerpo y cabeza, calcula la diferencia relativa y la
 reparte en los snapshots de GeckoLib después de la animación base. El pitch
@@ -135,7 +166,8 @@ Los pivotes y parentescos son válidos. Esta fase no modificó ni reexportó el
 - servidor dedicado aislado: cargó NeoForge, GeckoLib y `mc_evolved` y alcanzó
   el estado `Done`;
 - prueba dedicada por RCON: construyó un
-  `mc_evolved:prototype_dinosaur`, confirmó su UUID y cerró limpiamente;
+  `mc_evolved:prototype_dinosaur`, recibió daño de un zombi, confirmó que ese
+  zombi pasó a ser su objetivo de represalia y cerró limpiamente;
 - la configuración valida huesos únicos y pesos normalizados;
 - A* incorpora el coste de curvatura y el seguidor comprueba cada objetivo
   anticipado antes de omitir un nodo;
@@ -148,4 +180,9 @@ Pruebas visuales recomendadas para el prototipo:
 - pérdida del objetivo durante una maniobra;
 - ruta recta, giro de ruta y destino situado detrás;
 - obstáculo frontal que impida avanzar, comprobando que tampoco gire;
-- terreno inclinado mientras mira arriba y abajo.
+- terreno inclinado mientras mira arriba y abajo;
+- montado y quieto, girar la cámara 180 grados y confirmar que solo responde
+  el cuello;
+- montado y avanzando, solicitar giros de 30, 90 y 180 grados y confirmar que
+  el cuerpo describe curvas;
+- golpear al prototipo sin montarlo y comprobar que persigue al atacante.

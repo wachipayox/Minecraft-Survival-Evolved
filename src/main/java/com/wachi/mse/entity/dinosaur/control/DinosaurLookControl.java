@@ -5,6 +5,7 @@ import java.util.Optional;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.control.LookControl;
+import net.minecraft.world.entity.player.Player;
 
 /**
  * Keeps the logical head direction inside the configured cervical range and
@@ -17,6 +18,42 @@ public final class DinosaurLookControl extends LookControl {
     public DinosaurLookControl(Mob mob, DinosaurOrientationConfig config) {
         super(mob);
         this.config = config;
+    }
+
+    /**
+     * Lets a rider aim the neck without binding the body or the camera to the
+     * same rotation.
+     */
+    public void tickRidden(Player controller) {
+        this.lookAtCooldown = 0;
+        if (this.mob.getMoveControl() instanceof DinosaurMoveControl movement) {
+            movement.cancelLookTurn();
+        }
+
+        float bodyYaw = this.mob.getYRot();
+        float relativeTargetYaw = Mth.wrapDegrees(
+                controller.getYRot() - bodyYaw);
+        float clampedRelativeYaw = Mth.clamp(
+                relativeTargetYaw,
+                -this.config.maxNeckYawDegrees(),
+                this.config.maxNeckYawDegrees());
+        this.mob.yHeadRot = this.rotateTowards(
+                this.mob.yHeadRot,
+                bodyYaw + clampedRelativeYaw,
+                this.config.headYawSpeedDegreesPerTick());
+        this.mob.yHeadRot = Mth.rotateIfNecessary(
+                this.mob.yHeadRot,
+                bodyYaw,
+                this.config.maxNeckYawDegrees());
+
+        float targetPitch = Mth.clamp(
+                controller.getXRot(),
+                -this.config.maxPitchUpDegrees(),
+                this.config.maxPitchDownDegrees());
+        this.mob.setXRot(this.rotateTowards(
+                this.mob.getXRot(),
+                targetPitch,
+                this.config.headPitchSpeedDegreesPerTick()));
     }
 
     @Override
