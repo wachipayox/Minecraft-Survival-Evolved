@@ -174,6 +174,45 @@ public final class DinosaurLegIkSolver {
     }
 
     /**
+     * Produces the same anatomical pose as a real contact at the lowest
+     * vertically reachable point. Logical support flags are supplied by the
+     * caller because this method is also used to pose a leg over empty space.
+     */
+    public static DinosaurLegPose solveMaximumExtension(
+            DinosaurProceduralConfig config,
+            DinosaurLegRig rig,
+            float bodyTranslationY,
+            float bodyPitchRadians,
+            float bodyRollRadians,
+            boolean terrainContact) {
+        Vec3 hipWorld = targetFromBodySpace(
+                config,
+                hipPosition(rig),
+                bodyTranslationY,
+                bodyPitchRadians,
+                bodyRollRadians);
+        double horizontalX =
+                rig.renderedModelXOffset() - hipWorld.x;
+        double horizontalZ = rig.modelZOffset() - hipWorld.z;
+        double horizontalDistanceSquared =
+                horizontalX * horizontalX + horizontalZ * horizontalZ;
+        double maxReach = maximumReach(config, rig);
+        double verticalReach = Math.sqrt(Math.max(
+                0.0,
+                maxReach * maxReach - horizontalDistanceSquared));
+        float targetHeight = (float) (hipWorld.y - verticalReach);
+        return solveTarget(
+                config,
+                rig,
+                targetHeight,
+                bodyTranslationY,
+                bodyPitchRadians,
+                bodyRollRadians,
+                false,
+                terrainContact);
+    }
+
+    /**
      * Variant used when re-solving a render-smoothed leg. Terrain contact
      * changes only the logical support flags: every pose uses the same
      * anatomical reach limits.

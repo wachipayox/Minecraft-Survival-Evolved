@@ -30,4 +30,21 @@ public record DinosaurLegPose(
                 this.planted,
                 this.reachable);
     }
+
+    public DinosaurLegPose withSupportState(
+            boolean terrainContact,
+            boolean planted,
+            boolean reachable) {
+        return new DinosaurLegPose(
+                this.legId,
+                this.hipRotation,
+                this.kneeRotation,
+                this.footRotation,
+                this.targetFootHeightOffset,
+                this.solvedFootHeightOffset,
+                this.extensionFraction,
+                terrainContact,
+                planted,
+                reachable);
+    }
 }

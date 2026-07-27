@@ -31,13 +31,16 @@ Cada pata se resuelve en tres dimensiones:
 alcance útil del prototipo está entre el 35 % y el 98,5 %, evitando tanto el
 plegado degenerado como la singularidad de una cadena perfectamente recta.
 
-Ese máximo es único: se usa igual con un bloque en el límite físico que sin
-ningún bloque. Por tanto, una pata sobre el vacío adopta exactamente la misma
-extensión anatómica que tendría apoyada en el punto más bajo que puede
-alcanzar, pero `terrainContact()`, `planted()` y `reachable()` continúan siendo
-falsos. El vacío no se convierte en apoyo lógico ni se alarga ningún hueso.
-La regla recorre todas las extremidades declaradas en `config.legs()`; no
-distingue patas delanteras, traseras, cuadrúpedos ni bípedos.
+Ese máximo es único. Fuera de una caída, una pata sin apoyo puede conservar su
+pose acotada normal para no estirarse agresivamente sobre cada hueco pequeño.
+Cuando la evaluación conjunta determina que el animal necesita recuperación,
+se ejecuta una segunda pasada: toda pata sin terreno o fuera de alcance adopta
+exactamente la extensión anatómica que tendría con un bloque en el punto más
+bajo alcanzable. `terrainContact()`, `planted()` y `reachable()` conservan sus
+valores lógicos originales, por lo que el vacío no se convierte en apoyo ni se
+alarga ningún hueso. La regla recorre todas las extremidades declaradas en
+`config.legs()`; no distingue patas delanteras, traseras, cuadrúpedos ni
+bípedos.
 
 El estado de contacto acompaña a la pose suavizada y se conserva al compensar
 el bob vertical de la animación.
@@ -128,12 +131,12 @@ encuentra terreno ni siquiera en la zona de observación, se conserva el
 objetivo visual acotado a 0,75 bloques; aumentar la conciencia del entorno no
 hace que una pata cuelgue indefinidamente sobre el vacío.
 
-Una pata sin ninguna colisión usa directamente ese objetivo inferior, incluso
-si el reloj de marcha la habría puesto en fase de vuelo. Así la extremidad se
-extiende hasta la misma altura visual que tendría al encontrar un bloque justo
-en el límite mínimo, en lugar de recogerse mientras el animal ya pierde el
-apoyo. Si el objetivo está más abajo que la longitud ósea, el solver lo limita
-al mismo alcance máximo físico que usa ante un bloque demasiado bajo.
+Cuando la pérdida de terreno todavía deja un polígono estable, la extremidad
+puede mantener el objetivo inferior acotado. Si la postura completa ya exige
+recuperación, las patas que han perdido terreno se recalculan contra el punto
+vertical más bajo que su cadena puede alcanzar con la traslación e inclinación
+actuales. Es el mismo punto geométrico que produciría un bloque real en el
+límite; el solver no usa una altura arbitraria ni un alcance visual distinto.
 
 El solver busca numéricamente la traslación Y que minimiza las violaciones de
 alcance de todas las patas realmente apoyadas. Después resuelve cada cadena
@@ -165,12 +168,17 @@ El resultado geométrico tiene tres etapas lógicas:
 3. caída: el servidor aplica una aceleración horizontal acotada desde el
    borde de soporte hacia el lado sin apoyo.
 
-Si ninguna pata toca terreno pero el `AABB` sigue retenido por un bloque bajo
-el torso, ya no se considera un resultado indeterminado: es una postura sin
-soporte. La dirección se obtiene del sesgo conjunto de las patas sin apoyo,
-dando más peso al vacío y a los objetivos más inalcanzables. Si el caso es
-perfectamente simétrico, la orientación frontal del animal sirve únicamente
-como desempate determinista.
+Si el polígono de patas es inestable, se mide también la superficie real del
+`AABB` que todavía descansa sobre colisiones. Se intersecta la base de la
+hitbox con los rectángulos de las `VoxelShape` inmediatamente inferiores y se
+calcula su centro ponderado por área. La caída apunta desde ese apoyo residual
+hacia el centro de masas: es decir, se aleja de la porción de bloque que aún
+retiene al animal.
+
+Esta huella del cuerpo tiene prioridad para elegir la dirección porque es la
+que Minecraft está usando físicamente para sostener la hitbox. Si ya no queda
+ninguna superficie residual, se usa el sesgo de las patas sin apoyo y la
+orientación frontal queda únicamente como desempate determinista.
 
 La aceleración no simula un ragdoll ni sustituye las colisiones. Su única
 función es sacar de forma sostenida el `AABB` principal del bloque que lo
@@ -211,8 +219,10 @@ impulso autoritativo no progresan hasta volver a habilitar la entidad.
 
 En servidor se sondea una vez cada dos ticks y se reparte el trabajo usando
 el ID de entidad. Para cuatro patas la envolvente recibe como máximo 32
-vértices; su coste es despreciable frente a las consultas de colisión y no
-crece con el tamaño visual del dinosaurio, sino con su número de patas.
+vértices. La huella del AABB solo se consulta después de detectar
+inestabilidad; un dinosaurio estable no paga ese coste adicional. Cuando se
+necesita, el trabajo crece con el número de bloques realmente cruzados por la
+base de la hitbox, no con una cuadrícula de resolución fija.
 
 ## Rig inspeccionado
 
@@ -254,6 +264,7 @@ Con F3 visible se muestran:
 - conteos dinámicos `IK/total` y `ground/total`;
 - fase y actividad de marcha.
 - centro de masas y contorno de apoyo;
+- área de apoyo residual del AABB y su centro en cian;
 - margen firmado, número de patas sustentantes y dirección de caída cuando
   la postura es inestable.
 
@@ -263,13 +274,21 @@ especies que no tengan exactamente cuatro extremidades.
 ## Verificaciones
 
 - `gradlew compileJava`: correcto.
+- servidor aislado con navegación anulada: sobre un único bloque lateral pasó
+  de `X=1,40` a `X=3,85` sin cambiar `Z=0,50`, alejándose únicamente del
+  apoyo residual;
+- el objetivo inferior sintético produjo extensión `0,985000`, igual al
+  máximo configurado `0,985000`;
 - solver, muestreo y configuración no importan clases de cliente;
 - la X de Blockbench se convierte explícitamente a la X horneada por
   GeckoLib;
-- una pata sin contacto usa su extensión casi recta incluso durante la
-  compensación de la animación base;
+- una pata sin contacto implicada en una recuperación conserva su extensión
+  máxima incluso durante la compensación de la animación base;
 - una pata sin terreno y una pata con terreno justo en el límite comparten la
-  misma extensión máxima, sin escalado óseo ni apoyo lógico ficticio;
+  misma extensión máxima durante una recuperación, sin escalado óseo ni apoyo
+  lógico ficticio;
+- la dirección de caída prioriza el centro ponderado del apoyo residual del
+  AABB y se aleja de él;
 - una ruta activa solo exime fases de paso normales: la pérdida real de terreno
   sigue generando un vector aditivo de caída;
 - el modelo fuente conserva sus 23 huesos y no fue reexportado;

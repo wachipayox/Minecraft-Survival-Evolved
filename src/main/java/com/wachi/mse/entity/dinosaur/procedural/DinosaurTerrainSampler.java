@@ -19,6 +19,8 @@ import net.minecraft.world.phys.shapes.VoxelShape;
  */
 public final class DinosaurTerrainSampler {
     private static final double SAMPLE_EPSILON = 1.0E-5;
+    private static final double FOOTPRINT_SUPPORT_DEPTH = 0.125;
+    private static final double FOOTPRINT_SUPPORT_TOP_TOLERANCE = 0.05;
 
     private DinosaurTerrainSampler() {
     }
@@ -211,7 +213,29 @@ public final class DinosaurTerrainSampler {
                 origin,
                 bodyYawDegrees,
                 samples,
-                legs);
+                legs,
+                DinosaurFootprintSupport.none());
+        if (stability.requiresRecovery()) {
+            DinosaurFootprintSupport footprintSupport =
+                    sampleFootprintSupport(
+                            entity,
+                            origin,
+                            collisionContext,
+                            mutableBlockPos);
+            stability = DinosaurStabilitySolver.assess(
+                    config,
+                    origin,
+                    bodyYawDegrees,
+                    samples,
+                    legs,
+                    footprintSupport);
+            legs = extendTerrainLostLegsForRecovery(
+                    config,
+                    legs,
+                    bodyTranslationY,
+                    bodyPitch,
+                    bodyRoll);
+        }
 
         return new DinosaurProceduralPose(
                 origin,
@@ -231,6 +255,35 @@ public final class DinosaurTerrainSampler {
                 samples,
                 legs,
                 stability);
+    }
+
+    private static List<DinosaurLegPose> extendTerrainLostLegsForRecovery(
+            DinosaurProceduralConfig config,
+            List<DinosaurLegPose> legs,
+            float bodyTranslationY,
+            float bodyPitchRadians,
+            float bodyRollRadians) {
+        List<DinosaurLegPose> result = new ArrayList<>(legs.size());
+        for (DinosaurLegPose leg : legs) {
+            if (leg.terrainContact() && leg.reachable()) {
+                result.add(leg);
+                continue;
+            }
+
+            DinosaurLegPose extended =
+                    DinosaurLegIkSolver.solveMaximumExtension(
+                            config,
+                            config.leg(leg.legId()),
+                            bodyTranslationY,
+                            bodyPitchRadians,
+                            bodyRollRadians,
+                            leg.terrainContact());
+            result.add(extended.withSupportState(
+                    leg.terrainContact(),
+                    leg.planted(),
+                    leg.reachable()));
+        }
+        return List.copyOf(result);
     }
 
     private static DinosaurOrientationPose orientationPose(
@@ -355,6 +408,93 @@ public final class DinosaurTerrainSampler {
             }
         }
         return bestHit;
+    }
+
+    private static DinosaurFootprintSupport sampleFootprintSupport(
+            LivingEntity entity,
+            Vec3 origin,
+            CollisionContext collisionContext,
+            BlockPos.MutableBlockPos mutableBlockPos) {
+        Level level = entity.level();
+        Vec3 interpolationOffset = origin.subtract(entity.position());
+        AABB bounds = entity.getBoundingBox().move(interpolationOffset);
+        int minBlockX = Mth.floor(bounds.minX + SAMPLE_EPSILON);
+        int maxBlockX = Mth.floor(bounds.maxX - SAMPLE_EPSILON);
+        int minBlockZ = Mth.floor(bounds.minZ + SAMPLE_EPSILON);
+        int maxBlockZ = Mth.floor(bounds.maxZ - SAMPLE_EPSILON);
+        int minBlockY =
+                Mth.floor(bounds.minY - FOOTPRINT_SUPPORT_DEPTH);
+        int maxBlockY = Mth.floor(
+                bounds.minY + FOOTPRINT_SUPPORT_TOP_TOLERANCE);
+        double totalArea = 0.0;
+        double weightedX = 0.0;
+        double weightedY = 0.0;
+        double weightedZ = 0.0;
+
+        for (int blockX = minBlockX; blockX <= maxBlockX; blockX++) {
+            for (int blockZ = minBlockZ; blockZ <= maxBlockZ; blockZ++) {
+                if (!level.getChunkSource().hasChunk(
+                        blockX >> 4,
+                        blockZ >> 4)) {
+                    continue;
+                }
+                for (int blockY = minBlockY;
+                        blockY <= maxBlockY;
+                        blockY++) {
+                    mutableBlockPos.set(blockX, blockY, blockZ);
+                    VoxelShape shape = level
+                            .getBlockState(mutableBlockPos)
+                            .getCollisionShape(
+                                    level,
+                                    mutableBlockPos,
+                                    collisionContext);
+                    for (AABB box : shape.toAabbs()) {
+                        double worldTop = blockY + box.maxY;
+                        if (worldTop
+                                        < bounds.minY
+                                                - FOOTPRINT_SUPPORT_DEPTH
+                                || worldTop
+                                        > bounds.minY
+                                                + FOOTPRINT_SUPPORT_TOP_TOLERANCE) {
+                            continue;
+                        }
+
+                        double overlapMinX =
+                                Math.max(bounds.minX, blockX + box.minX);
+                        double overlapMaxX =
+                                Math.min(bounds.maxX, blockX + box.maxX);
+                        double overlapMinZ =
+                                Math.max(bounds.minZ, blockZ + box.minZ);
+                        double overlapMaxZ =
+                                Math.min(bounds.maxZ, blockZ + box.maxZ);
+                        double width = overlapMaxX - overlapMinX;
+                        double depth = overlapMaxZ - overlapMinZ;
+                        if (width <= SAMPLE_EPSILON
+                                || depth <= SAMPLE_EPSILON) {
+                            continue;
+                        }
+
+                        double area = width * depth;
+                        totalArea += area;
+                        weightedX +=
+                                (overlapMinX + overlapMaxX) * 0.5 * area;
+                        weightedY += worldTop * area;
+                        weightedZ +=
+                                (overlapMinZ + overlapMaxZ) * 0.5 * area;
+                    }
+                }
+            }
+        }
+
+        if (totalArea <= SAMPLE_EPSILON) {
+            return DinosaurFootprintSupport.none();
+        }
+        return new DinosaurFootprintSupport(
+                totalArea,
+                new Vec3(
+                        weightedX / totalArea,
+                        weightedY / totalArea,
+                        weightedZ / totalArea));
     }
 
     private static Vec3 modelPointToWorld(

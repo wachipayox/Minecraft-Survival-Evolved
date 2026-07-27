@@ -145,7 +145,7 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
         Gizmos.billboardText(
                 String.format(
                         Locale.ROOT,
-                        "balance %s / margin %s / support %d/%d",
+                        "balance %s / margin %s / support %d/%d / aabb %.2f",
                         stabilityLabel(stability),
                         stability.evaluable()
                                         && Double.isFinite(
@@ -158,7 +158,10 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
                                         ? "void"
                                         : "--",
                         stability.supportingLegCount(),
-                        pose.legs().size()),
+                        pose.legs().size(),
+                        stability
+                                .footprintSupport()
+                                .areaBlocksSquared()),
                 pose.origin().add(0.0, dinosaur.getBbHeight() - 0.04, 0.0),
                 TextGizmo.Style
                         .forColorAndCentered(stabilityColor(stability))
@@ -197,6 +200,14 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
 
         Vec3 center = stability.centerOfMassWorld().add(0.0, 0.08, 0.0);
         Gizmos.point(center, stabilityColor(stability), POINT_SIZE);
+        if (stability.footprintSupport().present()) {
+            Vec3 footprintCenter = stability
+                    .footprintSupport()
+                    .centerWorld()
+                    .add(0.0, 0.04, 0.0);
+            Gizmos.point(footprintCenter, 0xFF00FFFF, POINT_SIZE);
+            Gizmos.line(footprintCenter, center, 0xFF00FFFF, 1.5F);
+        }
         if (stability.requiresRecovery()) {
             Gizmos.line(
                     center,

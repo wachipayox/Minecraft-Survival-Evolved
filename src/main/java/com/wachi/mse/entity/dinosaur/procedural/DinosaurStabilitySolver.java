@@ -25,7 +25,8 @@ public final class DinosaurStabilitySolver {
             Vec3 origin,
             float bodyYawDegrees,
             List<DinosaurTerrainSample> samples,
-            List<DinosaurLegPose> legs) {
+            List<DinosaurLegPose> legs,
+            DinosaurFootprintSupport footprintSupport) {
         DinosaurStabilityConfig stability = config.stability();
         Vec3 centerOfMass = modelPointToWorld(
                 origin,
@@ -65,19 +66,30 @@ public final class DinosaurStabilitySolver {
                     stability.footSupportRadius());
         }
 
+        Vec3 footprintDirection = footprintSupport.present()
+                ? horizontalDirection(
+                        footprintSupport.centerWorld(),
+                        centerOfMass)
+                : Vec3.ZERO;
         List<Vec3> hull = convexHull(footprintVertices);
         if (hull.size() < 3) {
             if (supportingLegs == 0) {
-                Vec3 fallDirection = unsupportedBias.lengthSqr() > EPSILON
-                        ? unsupportedBias.normalize()
-                        : modelForwardDirection(bodyYawDegrees);
+                Vec3 fallDirection =
+                        footprintDirection.lengthSqr() > EPSILON
+                                ? footprintDirection
+                                : unsupportedBias.lengthSqr() > EPSILON
+                                        ? unsupportedBias.normalize()
+                                        : modelForwardDirection(
+                                                bodyYawDegrees);
                 return DinosaurStabilityAssessment.fullyUnsupported(
                         centerOfMass,
-                        fallDirection);
+                        fallDirection,
+                        footprintSupport);
             }
             return DinosaurStabilityAssessment.notEvaluable(
                     centerOfMass,
-                    supportingLegs);
+                    supportingLegs,
+                    footprintSupport);
         }
 
         BoundaryDistance boundary = distanceToBoundary(centerOfMass, hull);
@@ -89,15 +101,17 @@ public final class DinosaurStabilitySolver {
         Vec3 polygonDirection = boundary.inside()
                 ? Vec3.ZERO
                 : horizontalDirection(boundary.closestPoint(), centerOfMass);
-        // When actual feet are missing, their weighted centroid is the most
-        // readable fall direction for the player: it points towards the
-        // unsupported anatomy directly. The polygon normal remains the
-        // fallback for unusual layouts where those vectors cancel out.
+        // The collision footprint is the terrain physically retaining the
+        // AABB, so falling away from its centroid takes precedence. Missing
+        // feet and the anatomical support polygon remain deterministic
+        // fallbacks when no residual body support exists.
         Vec3 fallDirection = stable
                 ? Vec3.ZERO
-                : unsupportedBias.lengthSqr() > EPSILON
-                        ? unsupportedBias.normalize()
-                        : polygonDirection;
+                : footprintDirection.lengthSqr() > EPSILON
+                        ? footprintDirection
+                        : unsupportedBias.lengthSqr() > EPSILON
+                                ? unsupportedBias.normalize()
+                                : polygonDirection;
         return new DinosaurStabilityAssessment(
                 true,
                 stable,
@@ -105,7 +119,8 @@ public final class DinosaurStabilitySolver {
                 centerOfMass,
                 fallDirection,
                 supportingLegs,
-                hull);
+                hull,
+                footprintSupport);
     }
 
     private static void appendFootCircle(
