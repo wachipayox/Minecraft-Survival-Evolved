@@ -7,8 +7,10 @@ import java.util.List;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
@@ -163,13 +165,28 @@ public final class DinosaurTerrainSampler {
                         origin.y - config.sampleBelow(),
                         nominalPosition.z);
             }
+            float supportWeight = gait.supportWeight(leg.id());
+            FootTilt footTilt = valid && supportWeight > SAMPLE_EPSILON
+                    ? sampleFootTilt(
+                            level,
+                            collisionContext,
+                            origin,
+                            leg,
+                            config,
+                            sinYaw,
+                            cosYaw,
+                            position.y,
+                            observationBelow)
+                    : FootTilt.NONE;
             DinosaurTerrainSample sample = new DinosaurTerrainSample(
                     leg.id(),
                     leg.shortName(),
                     position,
                     position.y - origin.y,
                     valid,
-                    gait.supportWeight(leg.id()));
+                    supportWeight,
+                    footTilt.pitchRadians() * supportWeight,
+                    footTilt.rollRadians() * supportWeight);
             samples.add(sample);
         }
 
@@ -472,6 +489,96 @@ public final class DinosaurTerrainSampler {
             }
         }
         return bestHit;
+    }
+
+    private static FootTilt sampleFootTilt(
+            Level level,
+            CollisionContext collisionContext,
+            Vec3 origin,
+            DinosaurLegRig leg,
+            DinosaurProceduralConfig config,
+            double sinYaw,
+            double cosYaw,
+            double centerHeight,
+            double observationBelow) {
+        Vec3 center = modelPointToWorld(
+                origin,
+                leg.modelXOffset(),
+                leg.modelZOffset(),
+                sinYaw,
+                cosYaw);
+        Vec3 lateralAxis = new Vec3(cosYaw, 0.0, -sinYaw);
+        Vec3 longitudinalAxis = new Vec3(sinYaw, 0.0, cosYaw);
+        double verticalRange = Math.max(
+                1.0,
+                Math.min(observationBelow, leg.totalLength() * 0.35));
+        double maximumY = centerHeight + verticalRange;
+        double minimumY = centerHeight - verticalRange;
+
+        GroundHit lateralPositive = findGroundNearHeight(
+                level,
+                collisionContext,
+                center.add(lateralAxis.scale(leg.footHalfWidth())),
+                maximumY,
+                minimumY);
+        GroundHit lateralNegative = findGroundNearHeight(
+                level,
+                collisionContext,
+                center.add(lateralAxis.scale(-leg.footHalfWidth())),
+                maximumY,
+                minimumY);
+        GroundHit longitudinalPositive = findGroundNearHeight(
+                level,
+                collisionContext,
+                center.add(longitudinalAxis.scale(leg.footHalfLength())),
+                maximumY,
+                minimumY);
+        GroundHit longitudinalNegative = findGroundNearHeight(
+                level,
+                collisionContext,
+                center.add(longitudinalAxis.scale(-leg.footHalfLength())),
+                maximumY,
+                minimumY);
+
+        float roll = 0.0F;
+        if (lateralPositive != null && lateralNegative != null) {
+            roll = (float) Mth.clamp(
+                    Math.atan2(
+                            lateralPositive.position().y
+                                    - lateralNegative.position().y,
+                            leg.footHalfWidth() * 2.0),
+                    -config.maxFootRollRadians(),
+                    config.maxFootRollRadians());
+        }
+
+        float pitch = 0.0F;
+        if (longitudinalPositive != null && longitudinalNegative != null) {
+            pitch = (float) Mth.clamp(
+                    -Math.atan2(
+                            longitudinalPositive.position().y
+                                    - longitudinalNegative.position().y,
+                            leg.footHalfLength() * 2.0),
+                    -config.maxFootPitchRadians(),
+                    config.maxFootPitchRadians());
+        }
+        return new FootTilt(pitch, roll);
+    }
+
+    private static GroundHit findGroundNearHeight(
+            Level level,
+            CollisionContext collisionContext,
+            Vec3 point,
+            double maximumY,
+            double minimumY) {
+        HitResult hit = level.clip(new ClipContext(
+                new Vec3(point.x, maximumY, point.z),
+                new Vec3(point.x, minimumY, point.z),
+                ClipContext.Block.COLLIDER,
+                ClipContext.Fluid.NONE,
+                collisionContext));
+        return hit.getType() == HitResult.Type.MISS
+                ? null
+                : new GroundHit(hit.getLocation(), 0.0);
     }
 
     private static DinosaurFootprintSupport sampleFootprintSupport(
@@ -794,6 +901,10 @@ public final class DinosaurTerrainSampler {
     }
 
     private record GroundHit(Vec3 position, double distanceSquared) {
+    }
+
+    private record FootTilt(float pitchRadians, float rollRadians) {
+        private static final FootTilt NONE = new FootTilt(0.0F, 0.0F);
     }
 
     private record RecoveryLean(

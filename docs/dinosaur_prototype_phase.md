@@ -29,9 +29,10 @@ prototipo y reutiliza el mismo modelo, textura, animaciones y renderer:
 /summon mc_evolved:giant_prototype_dinosaur ~ ~ ~
 ```
 
-Su atributo vanilla `minecraft:scale` vale `10.0`. La hitbox base definitiva
-de `1.2 × 1.4` se convierte por tanto en una hitbox física de `12 × 14`
-bloques, y el asiento y la altura de ojos siguen esa misma escala. La
+Su atributo vanilla `minecraft:scale` vale `10.0` y el registro declara
+explícitamente una hitbox física de `12 × 14` bloques para esta fixture. La
+anatomía visual y seleccionable se escala por separado mediante partes
+procedurales, y el asiento y la altura de ojos siguen la escala. La
 configuración procedural se deriva mediante escalado geométrico: offsets,
 longitudes y radios de las patas, sondas de terreno, soporte, corrección
 vertical, empuje de caída, distancia de anticipación y radio de giro aumentan
@@ -49,9 +50,11 @@ integración antes de recibir el modelo definitivo:
   tres segmentos de cola;
 - textura pixel art de 128 × 128;
 - cuatro pies apoyados en Y=0;
-- clips `idle` de 2 segundos y `walk` de 1 segundo, ambos en bucle.
+- clips `idle` de 2 segundos y `walk` de 1 segundo, ambos en bucle;
+- clip `bite` de 0,8 segundos, reproducido una vez por ataque.
 
-El `.bbmodel` conserva 3 claves nativas para `idle` y 6 para `walk`. Los
+El `.bbmodel` conserva 3 claves nativas para `idle`, 6 para `walk` y 24 para
+`bite`. Los
 exports de GeckoLib sólo animan `body.position` en esta fase para mantener una
 base deliberadamente segura; la locomoción articular y las correcciones
 procedurales pertenecen a fases posteriores.
@@ -60,7 +63,7 @@ procedurales pertenecen a fases posteriores.
 
 ## Verificaciones realizadas
 
-- El exportador GeckoLib confirmó 23 huesos, 23 cubos, dos animaciones,
+- El exportador GeckoLib confirmó 23 huesos, 23 cubos, tres animaciones,
   referencias de huesos válidas y UV de seis caras por cubo.
 - La auditoría local confirmó textura 128 × 128, extremos de bucle coincidentes
   y claves nativas persistentes tras cerrar y reabrir el `.bbmodel`.

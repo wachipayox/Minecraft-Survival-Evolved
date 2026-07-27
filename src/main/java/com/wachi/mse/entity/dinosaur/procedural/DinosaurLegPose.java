@@ -11,6 +11,8 @@ public record DinosaurLegPose(
         float targetFootHeightOffset,
         float solvedFootHeightOffset,
         float extensionFraction,
+        float footTerrainPitchRadians,
+        float footTerrainRollRadians,
         boolean terrainContact,
         boolean planted,
         DinosaurLegReachStatus reachStatus,
@@ -44,6 +46,8 @@ public record DinosaurLegPose(
                 requested.targetFootHeightOffset,
                 this.solvedFootHeightOffset,
                 this.extensionFraction,
+                requested.footTerrainPitchRadians,
+                requested.footTerrainRollRadians,
                 requested.terrainContact,
                 requested.planted,
                 requested.reachStatus,
@@ -59,9 +63,30 @@ public record DinosaurLegPose(
                 this.targetFootHeightOffset,
                 this.solvedFootHeightOffset,
                 this.extensionFraction,
+                this.footTerrainPitchRadians,
+                this.footTerrainRollRadians,
                 this.terrainContact,
                 this.planted,
                 this.reachStatus,
                 true);
+    }
+
+    public DinosaurLegPose withFootTerrainTilt(
+            float pitchRadians,
+            float rollRadians) {
+        return new DinosaurLegPose(
+                this.legId,
+                this.hipRotation,
+                this.kneeRotation,
+                this.footRotation,
+                this.targetFootHeightOffset,
+                this.solvedFootHeightOffset,
+                this.extensionFraction,
+                pitchRadians,
+                rollRadians,
+                this.terrainContact,
+                this.planted,
+                this.reachStatus,
+                this.forcedMaximumExtension);
     }
 }

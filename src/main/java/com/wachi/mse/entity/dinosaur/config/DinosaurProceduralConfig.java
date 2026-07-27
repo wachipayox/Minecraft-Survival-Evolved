@@ -10,6 +10,9 @@ public record DinosaurProceduralConfig(
         GaitConfig gait,
         DinosaurStabilityConfig stability,
         DinosaurOrientationConfig orientation,
+        DinosaurSkeletonConfig skeleton,
+        DinosaurCombatConfig combat,
+        DinosaurNavigationConfig navigation,
         float modelScale,
         double bodyPivotHeight,
         double footContactHeight,
@@ -27,6 +30,8 @@ public record DinosaurProceduralConfig(
         float bodyTiltSlopeShare,
         float maxHybridPitchRadians,
         float maxHybridRollRadians,
+        float maxFootPitchRadians,
+        float maxFootRollRadians,
         float smoothingResponsePerSecond) {
     public static final DinosaurProceduralConfig PROTOTYPE = new DinosaurProceduralConfig(
             new DinosaurBoneNames("body"),
@@ -42,6 +47,8 @@ public record DinosaurProceduralConfig(
                             12.0 / 16.0,
                             6.0 / 16.0,
                             1.0 / 16.0,
+                            1.5 / 16.0,
+                            2.5 / 16.0,
                             1.0F,
                             0.0F),
                     new DinosaurLegRig(
@@ -55,6 +62,8 @@ public record DinosaurProceduralConfig(
                             12.0 / 16.0,
                             6.0 / 16.0,
                             1.0 / 16.0,
+                            1.5 / 16.0,
+                            2.5 / 16.0,
                             1.0F,
                             0.5F),
                     new DinosaurLegRig(
@@ -68,6 +77,8 @@ public record DinosaurProceduralConfig(
                             12.0 / 16.0,
                             6.0 / 16.0,
                             1.0 / 16.0,
+                            1.5 / 16.0,
+                            2.5 / 16.0,
                             -1.0F,
                             0.75F),
                     new DinosaurLegRig(
@@ -81,6 +92,8 @@ public record DinosaurProceduralConfig(
                             12.0 / 16.0,
                             6.0 / 16.0,
                             1.0 / 16.0,
+                            1.5 / 16.0,
+                            2.5 / 16.0,
                             -1.0F,
                             0.25F)),
             new GaitConfig(12.8F, 0.6F, 0.12F, 0.04F),
@@ -115,6 +128,9 @@ public record DinosaurProceduralConfig(
                     0.8,
                     4.0,
                     12.0F),
+            DinosaurSkeletonConfig.PROTOTYPE,
+            DinosaurCombatConfig.PROTOTYPE,
+            DinosaurNavigationConfig.PROTOTYPE,
             1.0F,
             14.0 / 16.0,
             0.0,
@@ -132,6 +148,8 @@ public record DinosaurProceduralConfig(
             0.35F,
             (float) Math.toRadians(10.0),
             (float) Math.toRadians(7.0),
+            (float) Math.toRadians(25.0),
+            (float) Math.toRadians(25.0),
             9.0F);
     public static final DinosaurProceduralConfig GIANT_PROTOTYPE =
             PROTOTYPE.scaled(10.0F);
@@ -144,6 +162,9 @@ public record DinosaurProceduralConfig(
                 || gait == null
                 || stability == null
                 || orientation == null
+                || skeleton == null
+                || combat == null
+                || navigation == null
                 || !Float.isFinite(modelScale)
                 || modelScale <= 0.0F
                 || legs.size() < 2
@@ -163,7 +184,10 @@ public record DinosaurProceduralConfig(
                 || minLegReachFraction >= maxLegReachFraction) {
             throw new IllegalArgumentException("Leg reach fractions are invalid");
         }
-        if (maxPitchRadians < 0.0F || maxRollRadians < 0.0F) {
+        if (maxPitchRadians < 0.0F
+                || maxRollRadians < 0.0F
+                || maxFootPitchRadians < 0.0F
+                || maxFootRollRadians < 0.0F) {
             throw new IllegalArgumentException("Procedural angle limits must be non-negative");
         }
         if (bodyTiltStartExtensionFraction <= minLegReachFraction
@@ -204,6 +228,8 @@ public record DinosaurProceduralConfig(
                         leg.hipHeight() * scale,
                         leg.kneeHeight() * scale,
                         leg.footPivotHeight() * scale,
+                        leg.footHalfWidth() * scale,
+                        leg.footHalfLength() * scale,
                         leg.kneeBendDirection(),
                         leg.swingPhase()))
                 .toList();
@@ -243,6 +269,9 @@ public record DinosaurProceduralConfig(
                 this.gait,
                 scaledStability,
                 scaledOrientation,
+                this.skeleton,
+                this.combat,
+                this.navigation,
                 this.modelScale * scale,
                 this.bodyPivotHeight * scale,
                 this.footContactHeight * scale,
@@ -260,6 +289,8 @@ public record DinosaurProceduralConfig(
                 this.bodyTiltSlopeShare,
                 this.maxHybridPitchRadians,
                 this.maxHybridRollRadians,
+                this.maxFootPitchRadians,
+                this.maxFootRollRadians,
                 this.smoothingResponsePerSecond);
     }
 

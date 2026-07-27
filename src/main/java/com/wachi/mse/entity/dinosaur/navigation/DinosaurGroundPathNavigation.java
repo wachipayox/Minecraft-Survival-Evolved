@@ -2,7 +2,9 @@ package com.wachi.mse.entity.dinosaur.navigation;
 
 import com.wachi.mse.entity.dinosaur.ProceduralDinosaur;
 import com.wachi.mse.entity.dinosaur.config.DinosaurOrientationConfig;
+import com.wachi.mse.entity.dinosaur.config.DinosaurNavigationConfig;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
@@ -16,10 +18,11 @@ import net.minecraft.world.phys.Vec3;
 /**
  * Ground navigation with curvature-aware waypoint following.
  *
- * <p>The A* path remains Minecraft's collision-aware grid path. Its exact
- * nodes are converted into a short pure-pursuit target whose look-ahead is
- * derived from the species' turning radius and current path speed. Unsafe
- * corner cuts fall back to the vanilla next node.</p>
+ * <p>Normal-sized species retain Minecraft's collision-aware A* grid. Its
+ * exact nodes are converted into a short pure-pursuit target whose look-ahead
+ * follows the species' turning radius. Giant species use a bounded local
+ * collision fan instead of asking the grid search to expand an impractical
+ * volume.</p>
  */
 public final class DinosaurGroundPathNavigation extends GroundPathNavigation {
     private static final int HARD_MAX_LOOK_AHEAD_NODES = 64;
@@ -27,9 +30,23 @@ public final class DinosaurGroundPathNavigation extends GroundPathNavigation {
     private static final double MIN_COLLISION_SAMPLE_STEP = 0.2;
     private static final double MAX_COLLISION_SAMPLE_STEP = 0.75;
     private static final double COLLISION_EPSILON = 1.0E-4;
+    private static final int LOCAL_PLAN_INTERVAL_TICKS = 3;
+
+    private final DinosaurNavigationConfig navigationConfig;
+    private Entity movingTarget;
+    private Vec3 fixedTarget;
+    private double localSpeedModifier;
+    private int nextLocalPlanTick;
+    private float cachedLocalYaw;
+    private double cachedLocalLift;
 
     public DinosaurGroundPathNavigation(Mob mob, Level level) {
         super(mob, level);
+        this.navigationConfig = ((ProceduralDinosaur) mob)
+                .proceduralConfig()
+                .navigation();
+        this.setMaxVisitedNodesMultiplier(
+                this.navigationConfig.maxVisitedNodesMultiplier());
     }
 
     @Override
@@ -47,6 +64,10 @@ public final class DinosaurGroundPathNavigation extends GroundPathNavigation {
 
     @Override
     public void tick() {
+        if (usesLocalPlanner()) {
+            tickLocalPlanner();
+            return;
+        }
         super.tick();
         Path currentPath = this.path;
         if (currentPath == null
@@ -70,6 +91,171 @@ public final class DinosaurGroundPathNavigation extends GroundPathNavigation {
                     groundedSteeringTarget.z,
                     this.speedModifier);
         }
+    }
+
+    @Override
+    public boolean moveTo(Entity target, double speedModifier) {
+        if (usesLocalPlanner()) {
+            this.movingTarget = target;
+            this.fixedTarget = null;
+            this.localSpeedModifier = speedModifier;
+            return true;
+        }
+        return super.moveTo(target, speedModifier);
+    }
+
+    @Override
+    public boolean moveTo(
+            double x,
+            double y,
+            double z,
+            double speedModifier) {
+        if (usesLocalPlanner()) {
+            this.movingTarget = null;
+            this.fixedTarget = new Vec3(x, y, z);
+            this.localSpeedModifier = speedModifier;
+            return true;
+        }
+        return super.moveTo(x, y, z, speedModifier);
+    }
+
+    @Override
+    public void stop() {
+        super.stop();
+        this.movingTarget = null;
+        this.fixedTarget = null;
+    }
+
+    @Override
+    public boolean isDone() {
+        return usesLocalPlanner()
+                ? this.movingTarget == null && this.fixedTarget == null
+                : super.isDone();
+    }
+
+    private boolean usesLocalPlanner() {
+        return ((ProceduralDinosaur) this.mob)
+                        .proceduralConfig()
+                        .modelScale()
+                >= this.navigationConfig.localPlannerScaleThreshold();
+    }
+
+    private void tickLocalPlanner() {
+        Vec3 target = this.movingTarget != null
+                ? this.movingTarget.position()
+                : this.fixedTarget;
+        if (target == null) {
+            return;
+        }
+        Vec3 offset = target.subtract(this.mob.position());
+        double horizontalDistance = offset.horizontalDistance();
+        if (this.movingTarget == null
+                && horizontalDistance
+                        <= Math.max(0.5, this.mob.getBbWidth() * 0.25)) {
+            this.fixedTarget = null;
+            return;
+        }
+
+        if (this.mob.tickCount >= this.nextLocalPlanTick) {
+            chooseLocalSteering(offset);
+            this.nextLocalPlanTick =
+                    this.mob.tickCount + LOCAL_PLAN_INTERVAL_TICKS;
+        }
+        double steeringDistance = Math.max(
+                1.0,
+                Math.min(
+                        horizontalDistance,
+                        Math.max(
+                                this.navigationConfig.minimumLocalProbeDistance(),
+                                this.mob.getBbWidth() * 0.5)));
+        double yawRadians = Math.toRadians(this.cachedLocalYaw);
+        double forwardX = -Math.sin(yawRadians);
+        double forwardZ = Math.cos(yawRadians);
+        this.mob.getMoveControl().setWantedPosition(
+                this.mob.getX() + forwardX * steeringDistance,
+                this.mob.getY() + this.cachedLocalLift,
+                this.mob.getZ() + forwardZ * steeringDistance,
+                this.localSpeedModifier);
+    }
+
+    private void chooseLocalSteering(Vec3 targetOffset) {
+        float desiredYaw = (float) (
+                Mth.atan2(targetOffset.z, targetOffset.x)
+                        * 180.0F
+                        / Math.PI)
+                - 90.0F;
+        float bestYaw = desiredYaw;
+        double bestLift = 0.0;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        for (int sample = 0;
+                sample <= this.navigationConfig.steeringSamplesPerSide();
+                sample++) {
+            int variants = sample == 0 ? 1 : 2;
+            for (int variant = 0; variant < variants; variant++) {
+                float signedSample = sample == 0
+                        ? 0.0F
+                        : sample * (variant == 0 ? 1.0F : -1.0F);
+                float candidateYaw = desiredYaw
+                        + signedSample
+                                * this.navigationConfig.steeringSampleDegrees();
+                LocalProbe probe = probeDirection(candidateYaw);
+                if (!probe.passable()) {
+                    continue;
+                }
+                double score = -Math.abs(signedSample) - probe.lift() * 0.2;
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestYaw = candidateYaw;
+                    bestLift = probe.lift();
+                }
+            }
+        }
+        this.cachedLocalYaw = bestYaw;
+        this.cachedLocalLift = bestLift;
+    }
+
+    private LocalProbe probeDirection(float yawDegrees) {
+        double probeDistance = Math.max(
+                this.navigationConfig.minimumLocalProbeDistance(),
+                this.mob.getBbWidth()
+                        * this.navigationConfig.localProbeBodyWidths());
+        double yawRadians = Math.toRadians(yawDegrees);
+        double directionX = -Math.sin(yawRadians);
+        double directionZ = Math.cos(yawRadians);
+        AABB start = this.mob.getBoundingBox().deflate(COLLISION_EPSILON);
+        int samples = 3;
+        double maximumLift = Math.max(0.0, this.mob.maxUpStep());
+        double liftStep = Math.max(0.5, maximumLift / 6.0);
+
+        for (double lift = 0.0;
+                lift <= maximumLift + COLLISION_EPSILON;
+                lift += liftStep) {
+            boolean passable = true;
+            for (int sample = 1; sample <= samples; sample++) {
+                double distance = probeDistance * sample / samples;
+                AABB candidate = start.move(
+                        directionX * distance,
+                        lift,
+                        directionZ * distance);
+                if (!this.level.noCollision(this.mob, candidate)) {
+                    passable = false;
+                    break;
+                }
+            }
+            if (passable) {
+                AABB destination = start.move(
+                        directionX * probeDistance,
+                        lift,
+                        directionZ * probeDistance);
+                double supportDepth = Math.max(0.5, maximumLift + 0.25);
+                if (!this.level.noCollision(
+                        this.mob,
+                        destination.move(0.0, -supportDepth, 0.0))) {
+                    return new LocalProbe(true, lift);
+                }
+            }
+        }
+        return LocalProbe.BLOCKED;
     }
 
     private static double horizontalDistanceSquared(Vec3 left, Vec3 right) {
@@ -165,5 +351,10 @@ public final class DinosaurGroundPathNavigation extends GroundPathNavigation {
             }
         }
         return true;
+    }
+
+    private record LocalProbe(boolean passable, double lift) {
+        private static final LocalProbe BLOCKED =
+                new LocalProbe(false, 0.0);
     }
 }

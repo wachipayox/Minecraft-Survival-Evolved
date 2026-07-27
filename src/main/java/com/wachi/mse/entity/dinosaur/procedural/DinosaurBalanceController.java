@@ -1,5 +1,6 @@
 package com.wachi.mse.entity.dinosaur.procedural;
 
+import com.wachi.mse.entity.dinosaur.ProceduralDinosaur;
 import com.wachi.mse.entity.dinosaur.config.DinosaurProceduralConfig;
 import com.wachi.mse.entity.dinosaur.config.DinosaurStabilityConfig;
 import net.minecraft.world.entity.Mob;
@@ -57,7 +58,8 @@ public final class DinosaurBalanceController {
         if ((dinosaur.tickCount + dinosaur.getId()) % SAMPLE_INTERVAL_TICKS == 0
                 || this.lastAssessment == null) {
             DinosaurProceduralPose pose =
-                    DinosaurTerrainSampler.sampleAuthoritative(dinosaur, config);
+                    ((ProceduralDinosaur) dinosaur)
+                            .authoritativeProceduralPose();
             this.lastAssessment = pose.stability();
             this.updateState(dinosaur, pose, config.stability());
         }
@@ -147,7 +149,8 @@ public final class DinosaurBalanceController {
                 && (dinosaur.tickCount + dinosaur.getId())
                         % SAMPLE_INTERVAL_TICKS == 0) {
             DinosaurProceduralPose pose =
-                    DinosaurTerrainSampler.sampleAuthoritative(dinosaur, config);
+                    ((ProceduralDinosaur) dinosaur)
+                            .authoritativeProceduralPose();
             this.lastAssessment = pose.stability();
             if (!requiresRecovery(dinosaur, pose, stability)) {
                 this.reset();
@@ -180,7 +183,8 @@ public final class DinosaurBalanceController {
 
         if (this.becameAirborne) {
             DinosaurProceduralPose pose =
-                    DinosaurTerrainSampler.sampleAuthoritative(dinosaur, config);
+                    ((ProceduralDinosaur) dinosaur)
+                            .authoritativeProceduralPose();
             this.lastAssessment = pose.stability();
             if (!requiresRecovery(dinosaur, pose, stability)) {
                 this.reset();

@@ -16,6 +16,7 @@ import com.wachi.mse.entity.dinosaur.procedural.DinosaurTerrainSampler;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.phys.AABB;
 import org.jetbrains.annotations.Nullable;
 
 public final class PrototypeDinosaurRenderer
@@ -36,6 +37,11 @@ public final class PrototypeDinosaurRenderer
                 context,
                 new DefaultedEntityGeoModel<>(
                         Identifier.fromNamespaceAndPath(MseMod.MOD_ID, "prototype_dinosaur")));
+    }
+
+    @Override
+    protected AABB getBoundingBoxForCulling(PrototypeDinosaurEntity entity) {
+        return entity.dinosaurVisualBounds();
     }
 
     @Override

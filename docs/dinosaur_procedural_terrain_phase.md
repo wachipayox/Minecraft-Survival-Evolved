@@ -25,7 +25,12 @@ Cada pata se resuelve en tres dimensiones:
 - la cadera orienta el primer segmento;
 - la rodilla coloca el segundo segmento;
 - el pie contrarrota cuerpo, cadera y rodilla para conservar la planta
-  horizontal.
+  alineada con su apoyo.
+
+Cada planta sondea además dos extremos laterales y dos longitudinales. El
+desnivel local añade pitch y roll visuales limitados, de modo que un pie sobre
+una ladera, slab o escalera sigue la superficie sin alterar la colisión ni el
+cálculo de equilibrio.
 
 «Estirar» una pata significa abrir la rodilla sin escalar la anatomía. El
 intervalo preferido del prototipo está entre el 35 % y el 98,5 %. El límite

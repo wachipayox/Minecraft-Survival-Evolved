@@ -11,9 +11,9 @@ Mod para Minecraft 26.1.2 sobre NeoForge 26.1.2.84, Java 25 y GeckoLib 5.
 - entidad GeckoLib inicial: `mc_evolved:prototype_dinosaur`
 
 El prototipo incluye un modelo temporal, textura pixel art, animaciones
-`idle` y `walk`, atributos, una IA mínima de paseo, adaptación visual al
-terreno y orientación procedural de cuello/cabeza con giro corporal ligado
-al desplazamiento. Se puede invocar con:
+`idle`, `walk` y `bite`, adaptación visual al terreno, cuello procedural,
+navegación con giro por desplazamiento, hitboxes anatómicas multipartes y
+ataques ligados a la parte animada del cuerpo. Se puede invocar con:
 
 ```mcfunction
 /summon mc_evolved:prototype_dinosaur ~ ~ ~
@@ -43,4 +43,6 @@ Los `.bbmodel` se excluyen deliberadamente del JAR.
 La arquitectura y el orden de implementación del sistema procedural están en
 `docs/dinosaur_procedural_animation_plan.md`; las fases terminadas se detallan
 en `docs/dinosaur_procedural_terrain_phase.md` y
-`docs/dinosaur_orientation_phase.md`.
+`docs/dinosaur_orientation_phase.md`. El rediseño de anatomía lógica,
+navegación y combate se documenta en
+`docs/dinosaur_anatomy_navigation_combat.md`.

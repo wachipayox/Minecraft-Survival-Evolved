@@ -29,9 +29,9 @@ public final class MseEntities {
                             GiantPrototypeDinosaurEntity::new,
                             MobCategory.CREATURE,
                             builder -> builder
-                                    // The native SCALE attribute multiplies
-                                    // these same definitive prototype bounds.
-                                    .sized(1.2F, 1.4F)
+                                    // Explicit physical bounds for the x10
+                                    // fixture; visual anatomy is multipart.
+                                    .sized(12F, 14F)
                                     .clientTrackingRange(32));
 
     private MseEntities() {

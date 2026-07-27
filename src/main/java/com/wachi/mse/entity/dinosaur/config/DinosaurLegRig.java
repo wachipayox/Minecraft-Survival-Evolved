@@ -19,6 +19,8 @@ public record DinosaurLegRig(
         double hipHeight,
         double kneeHeight,
         double footPivotHeight,
+        double footHalfWidth,
+        double footHalfLength,
         float kneeBendDirection,
         float swingPhase) {
     public DinosaurLegRig {
@@ -34,7 +36,9 @@ public record DinosaurLegRig(
                 || footBone.isBlank()) {
             throw new IllegalArgumentException("Leg ID, label and bone names are required");
         }
-        if (!(hipHeight > kneeHeight && kneeHeight > footPivotHeight)) {
+        if (!(hipHeight > kneeHeight && kneeHeight > footPivotHeight)
+                || footHalfWidth <= 0.0
+                || footHalfLength <= 0.0) {
             throw new IllegalArgumentException("Leg pivots must descend from hip to foot");
         }
         if (kneeBendDirection != -1.0F && kneeBendDirection != 1.0F) {

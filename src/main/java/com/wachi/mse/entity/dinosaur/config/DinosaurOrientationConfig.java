@@ -9,8 +9,9 @@ import java.util.stream.Collectors;
  *
  * <p>The body turn is expressed both as a hard angular-speed cap and as
  * degrees per travelled block. The latter makes the turning radius depend on
- * actual displacement: a stationary dinosaur cannot pivot and a slow,
- * deliberate turn produces a tighter arc than a fast run.</p>
+ * actual displacement: ordinary steering cannot pivot and a slow,
+ * deliberate turn produces a tighter arc than a fast run. Stuck recovery is
+ * configured separately by {@link DinosaurNavigationConfig}.</p>
  */
 public record DinosaurOrientationConfig(
         List<DinosaurLookBone> lookBones,

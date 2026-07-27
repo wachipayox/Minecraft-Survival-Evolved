@@ -206,7 +206,7 @@ public final class DinosaurProceduralAnimator {
         snapshots.get(rig.lowerBone()).ifPresent(snapshot ->
                 applyRotation(snapshot, pose.kneeRotation()));
         snapshots.get(rig.footBone()).ifPresent(snapshot ->
-                applyRotation(snapshot, pose.footRotation()));
+                applyFootRotation(snapshot, pose));
     }
 
     private static void applyRotation(
@@ -215,6 +215,16 @@ public final class DinosaurProceduralAnimator {
         snapshot.setRotX(snapshot.getRotX() + rotation.xRadians());
         snapshot.setRotY(snapshot.getRotY() + rotation.yRadians());
         snapshot.setRotZ(snapshot.getRotZ() + rotation.zRadians());
+    }
+
+    private static void applyFootRotation(
+            BoneSnapshot snapshot,
+            DinosaurLegPose pose) {
+        applyRotation(snapshot, pose.footRotation());
+        snapshot.setRotX(
+                snapshot.getRotX() + pose.footTerrainPitchRadians());
+        snapshot.setRotZ(
+                snapshot.getRotZ() + pose.footTerrainRollRadians());
     }
 
     private static DinosaurLegPose compensateBodyAnimation(
@@ -233,7 +243,10 @@ public final class DinosaurProceduralAnimator {
                 smoothedLeg,
                 pose.bodyTranslationYBlocks() + animationBodyY,
                 pose.pitchRadians(),
-                pose.rollRadians());
+                pose.rollRadians())
+                .withFootTerrainTilt(
+                        smoothedLeg.footTerrainPitchRadians(),
+                        smoothedLeg.footTerrainRollRadians());
     }
 
     private static DinosaurLegPose solveForBodyHeight(
@@ -309,7 +322,10 @@ public final class DinosaurProceduralAnimator {
                     bodyPitch,
                     bodyRoll,
                     planted,
-                    targetLeg.terrainContact()));
+                    targetLeg.terrainContact())
+                    .withFootTerrainTilt(
+                            targetLeg.footTerrainPitchRadians(),
+                            targetLeg.footTerrainRollRadians()));
         }
         return List.copyOf(result);
     }

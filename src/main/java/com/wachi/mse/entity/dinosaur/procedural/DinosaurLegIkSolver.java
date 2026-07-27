@@ -253,7 +253,10 @@ public final class DinosaurLegIkSolver {
                 bodyPitchRadians,
                 bodyRollRadians,
                 sample.plantedCandidate(),
-                sample.valid());
+                sample.valid())
+                .withFootTerrainTilt(
+                        sample.footPitchRadians(),
+                        sample.footRollRadians());
     }
 
     /**
@@ -414,6 +417,8 @@ public final class DinosaurLegIkSolver {
                 targetHeight,
                 (float) solvedFootWorld.y,
                 (float) (solvedReach / (upperLength + lowerLength)),
+                0.0F,
+                0.0F,
                 terrainContact,
                 planted && reachStatus.reachable(),
                 reachStatus,

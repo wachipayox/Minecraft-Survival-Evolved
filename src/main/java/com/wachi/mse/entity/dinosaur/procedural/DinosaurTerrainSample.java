@@ -18,7 +18,9 @@ public record DinosaurTerrainSample(
         Vec3 position,
         double heightOffset,
         boolean valid,
-        float supportWeight) {
+        float supportWeight,
+        float footPitchRadians,
+        float footRollRadians) {
     private static final float PLANTED_SUPPORT_WEIGHT = 0.95F;
 
     public boolean plantedCandidate() {
