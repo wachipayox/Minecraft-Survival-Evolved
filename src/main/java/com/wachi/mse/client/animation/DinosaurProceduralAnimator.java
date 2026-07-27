@@ -144,20 +144,12 @@ public final class DinosaurProceduralAnimator {
             DinosaurLegRig rig,
             DinosaurLegPose pose,
             BoneSnapshots snapshots) {
-        snapshots.get(rig.upperBone()).ifPresent(snapshot -> {
-            snapshot.setScaleY(
-                    snapshot.getScaleY() * pose.visualStretchScale());
-            applyRotation(snapshot, pose.hipRotation());
-        });
+        snapshots.get(rig.upperBone()).ifPresent(snapshot ->
+                applyRotation(snapshot, pose.hipRotation()));
         snapshots.get(rig.lowerBone()).ifPresent(snapshot ->
                 applyRotation(snapshot, pose.kneeRotation()));
-        snapshots.get(rig.footBone()).ifPresent(snapshot -> {
-            // The parent scale moves the foot to the visual target. Its local
-            // inverse keeps the foot itself from becoming vertically thick.
-            snapshot.setScaleY(
-                    snapshot.getScaleY() / pose.visualStretchScale());
-            applyRotation(snapshot, pose.footRotation());
-        });
+        snapshots.get(rig.footBone()).ifPresent(snapshot ->
+                applyRotation(snapshot, pose.footRotation()));
     }
 
     private static void applyRotation(
@@ -222,23 +214,18 @@ public final class DinosaurProceduralAnimator {
                 result.add(targetLeg);
                 continue;
             }
-            result.add(targetLeg
-                    .withRotations(
-                            lerpRotation(
-                                    previousLeg.hipRotation(),
-                                    targetLeg.hipRotation(),
-                                    alpha),
-                            lerpRotation(
-                                    previousLeg.kneeRotation(),
-                                    targetLeg.kneeRotation(),
-                                    alpha),
-                            lerpRotation(
-                                    previousLeg.footRotation(),
-                                    targetLeg.footRotation(),
-                                    alpha))
-                    .withVisualStretchScale(lerp(
-                            previousLeg.visualStretchScale(),
-                            targetLeg.visualStretchScale(),
+            result.add(targetLeg.withRotations(
+                    lerpRotation(
+                            previousLeg.hipRotation(),
+                            targetLeg.hipRotation(),
+                            alpha),
+                    lerpRotation(
+                            previousLeg.kneeRotation(),
+                            targetLeg.kneeRotation(),
+                            alpha),
+                    lerpRotation(
+                            previousLeg.footRotation(),
+                            targetLeg.footRotation(),
                             alpha)));
         }
         return List.copyOf(result);

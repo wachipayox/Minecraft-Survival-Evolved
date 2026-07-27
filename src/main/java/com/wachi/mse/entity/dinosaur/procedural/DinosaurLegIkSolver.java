@@ -174,9 +174,9 @@ public final class DinosaurLegIkSolver {
     }
 
     /**
-     * Variant used when re-solving a render-smoothed leg. Unsupported legs
-     * deliberately use an almost straight reach instead of the normal
-     * anti-singularity limit reserved for planted locomotion.
+     * Variant used when re-solving a render-smoothed leg. Terrain contact
+     * changes only the logical support flags: every pose uses the same
+     * anatomical reach limits.
      */
     public static DinosaurLegPose solveTarget(
             DinosaurProceduralConfig config,
@@ -190,11 +190,7 @@ public final class DinosaurLegIkSolver {
         double upperLength = rig.upperLength();
         double lowerLength = rig.lowerLength();
         double minReach = minimumReach(config, rig);
-        double maxReach = maximumReach(
-                rig,
-                terrainContact
-                        ? config.maxLegReachFraction()
-                        : config.unsupportedLegReachFraction());
+        double maxReach = maximumReach(config, rig);
         Vec3 hip = hipPosition(rig);
         Vec3 target = targetInBodySpace(
                 config,
@@ -253,13 +249,6 @@ public final class DinosaurLegIkSolver {
                 bodyTranslationY,
                 bodyPitchRadians,
                 bodyRollRadians);
-        float visualStretchScale = terrainContact
-                ? 1.0F
-                : (float) Mth.clamp(
-                        requestedReach / solvedReach,
-                        1.0,
-                        config.maxUnsupportedLegStretchScale());
-
         return new DinosaurLegPose(
                 rig.id(),
                 hipRotation,
@@ -268,7 +257,6 @@ public final class DinosaurLegIkSolver {
                 targetHeight,
                 (float) solvedFootWorld.y,
                 (float) (solvedReach / (upperLength + lowerLength)),
-                visualStretchScale,
                 terrainContact,
                 planted && reachable,
                 reachable);

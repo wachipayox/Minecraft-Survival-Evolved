@@ -19,8 +19,6 @@ public record DinosaurProceduralConfig(
         double swingFootLift,
         float minLegReachFraction,
         float maxLegReachFraction,
-        float unsupportedLegReachFraction,
-        float maxUnsupportedLegStretchScale,
         float maxPitchRadians,
         float maxRollRadians,
         float slopeDeadzoneRadians,
@@ -125,8 +123,6 @@ public record DinosaurProceduralConfig(
             2.5 / 16.0,
             0.35F,
             0.985F,
-            0.99999F,
-            2.25F,
             (float) Math.toRadians(35.0),
             (float) Math.toRadians(15.0),
             (float) Math.toRadians(0.5),
@@ -156,14 +152,9 @@ public record DinosaurProceduralConfig(
         }
         if (!Float.isFinite(minLegReachFraction)
                 || !Float.isFinite(maxLegReachFraction)
-                || !Float.isFinite(unsupportedLegReachFraction)
-                || !Float.isFinite(maxUnsupportedLegStretchScale)
                 || minLegReachFraction <= 0.0F
                 || maxLegReachFraction >= 1.0F
-                || minLegReachFraction >= maxLegReachFraction
-                || unsupportedLegReachFraction < maxLegReachFraction
-                || unsupportedLegReachFraction >= 1.0F
-                || maxUnsupportedLegStretchScale < 1.0F) {
+                || minLegReachFraction >= maxLegReachFraction) {
             throw new IllegalArgumentException("Leg reach fractions are invalid");
         }
         if (maxPitchRadians < 0.0F || maxRollRadians < 0.0F) {

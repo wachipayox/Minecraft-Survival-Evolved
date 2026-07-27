@@ -27,22 +27,20 @@ Cada pata se resuelve en tres dimensiones:
 - el pie contrarrota cuerpo, cadera y rodilla para conservar la planta
   horizontal.
 
-Con terreno real, «estirar» una pata significa abrir la rodilla sin escalar
-la anatomía. El alcance útil del prototipo está entre el 35 % y el 98,5 %,
-evitando tanto el plegado degenerado como la singularidad de una cadena
-perfectamente recta.
+«Estirar» una pata significa abrir la rodilla sin escalar la anatomía. El
+alcance útil del prototipo está entre el 35 % y el 98,5 %, evitando tanto el
+plegado degenerado como la singularidad de una cadena perfectamente recta.
 
-Cuando una sonda no encuentra ningún suelo, el objetivo inferior puede quedar
-por debajo de la suma física de ambos segmentos. En ese único caso la cadena
-usa un límite lógico separado del 99,999 % y una escala visual Y acotada por
-especie; el prototipo permite hasta 2,25. Se escala desde la cadera para
-mantener unidos ambos segmentos y el pie aplica la escala inversa local para
-no engordar verticalmente. Esto permite que el pie llegue al mínimo visual sin
-convertir el vacío en apoyo lógico: `reachable()` continúa siendo falso.
+Ese máximo es único: se usa igual con un bloque en el límite físico que sin
+ningún bloque. Por tanto, una pata sobre el vacío adopta exactamente la misma
+extensión anatómica que tendría apoyada en el punto más bajo que puede
+alcanzar, pero `terrainContact()`, `planted()` y `reachable()` continúan siendo
+falsos. El vacío no se convierte en apoyo lógico ni se alarga ningún hueso.
+La regla recorre todas las extremidades declaradas en `config.legs()`; no
+distingue patas delanteras, traseras, cuadrúpedos ni bípedos.
 
-La escala entra en el mismo suavizado que las rotaciones. El estado de
-contacto acompaña a la pose y se conserva al compensar el bob vertical de la
-animación.
+El estado de contacto acompaña a la pose suavizada y se conserva al compensar
+el bob vertical de la animación.
 
 El cálculo vive en el paquete común
 `com.wachi.mse.entity.dinosaur.procedural`. No consulta IA, navegación,
@@ -134,8 +132,8 @@ Una pata sin ninguna colisión usa directamente ese objetivo inferior, incluso
 si el reloj de marcha la habría puesto en fase de vuelo. Así la extremidad se
 extiende hasta la misma altura visual que tendría al encontrar un bloque justo
 en el límite mínimo, en lugar de recogerse mientras el animal ya pierde el
-apoyo. Si el objetivo supera la longitud ósea, la extensión visual cubre la
-diferencia dentro del máximo configurado para esa especie.
+apoyo. Si el objetivo está más abajo que la longitud ósea, el solver lo limita
+al mismo alcance máximo físico que usa ante un bloque demasiado bajo.
 
 El solver busca numéricamente la traslación Y que minimiza las violaciones de
 alcance de todas las patas realmente apoyadas. Después resuelve cada cadena
@@ -270,8 +268,8 @@ especies que no tengan exactamente cuatro extremidades.
   GeckoLib;
 - una pata sin contacto usa su extensión casi recta incluso durante la
   compensación de la animación base;
-- la extensión visual hasta el objetivo inferior no modifica `reachable()` ni
-  el polígono de soporte;
+- una pata sin terreno y una pata con terreno justo en el límite comparten la
+  misma extensión máxima, sin escalado óseo ni apoyo lógico ficticio;
 - una ruta activa solo exime fases de paso normales: la pérdida real de terreno
   sigue generando un vector aditivo de caída;
 - el modelo fuente conserva sus 23 huesos y no fue reexportado;
