@@ -90,6 +90,112 @@ public final class DinosaurLegIkSolver {
         return (float) bestHeight;
     }
 
+    /**
+     * Projects a render-smoothed body height back into the common physical
+     * interval of all real planted contacts. Body smoothing must not make an
+     * otherwise valid foot travel through a slab or hover above its support.
+     */
+    public static float constrainBodyTranslationY(
+            DinosaurProceduralConfig config,
+            List<DinosaurTerrainSample> samples,
+            List<DinosaurLegPose> targetLegs,
+            float bodyPitchRadians,
+            float bodyRollRadians,
+            float desiredBodyTranslationY) {
+        double limit = config.maxBodyVerticalCorrection();
+        float boundedDesired = (float) Mth.clamp(
+                desiredBodyTranslationY,
+                -limit,
+                limit);
+        if (limit <= EPSILON) {
+            return 0.0F;
+        }
+
+        Map<String, DinosaurLegPose> legsById = new HashMap<>();
+        for (DinosaurLegPose leg : targetLegs) {
+            legsById.put(leg.legId(), leg);
+        }
+
+        double lowerBound = -limit;
+        double upperBound = limit;
+        boolean hasConstraint = false;
+        boolean impossibleIntersection = false;
+        for (DinosaurTerrainSample sample : samples) {
+            if (!sample.plantedCandidate()) {
+                continue;
+            }
+            DinosaurLegPose targetLeg = legsById.get(sample.legId());
+            if (targetLeg == null) {
+                continue;
+            }
+
+            DinosaurLegRig rig = config.leg(sample.legId());
+            Vec3 hipAtZeroBodyTranslation = targetFromBodySpace(
+                    config,
+                    hipPosition(rig),
+                    0.0,
+                    bodyPitchRadians,
+                    bodyRollRadians);
+            double horizontalX =
+                    rig.renderedModelXOffset() - hipAtZeroBodyTranslation.x;
+            double horizontalZ =
+                    rig.modelZOffset() - hipAtZeroBodyTranslation.z;
+            double horizontalSquared =
+                    horizontalX * horizontalX + horizontalZ * horizontalZ;
+            double maxReach = maximumReach(config, rig);
+            if (horizontalSquared > maxReach * maxReach + EPSILON) {
+                impossibleIntersection = true;
+                break;
+            }
+
+            double maximumVerticalDrop = Math.sqrt(Math.max(
+                    0.0,
+                    maxReach * maxReach - horizontalSquared));
+            double physicalMinimumReach = physicalMinimumReach(rig);
+            double minimumVerticalDrop =
+                    horizontalSquared >= physicalMinimumReach * physicalMinimumReach
+                            ? EPSILON
+                            : Math.sqrt(Math.max(
+                                    0.0,
+                                    physicalMinimumReach * physicalMinimumReach
+                                            - horizontalSquared));
+            double targetHeight = targetLeg.targetFootHeightOffset();
+            lowerBound = Math.max(
+                    lowerBound,
+                    targetHeight
+                            + minimumVerticalDrop
+                            - hipAtZeroBodyTranslation.y);
+            upperBound = Math.min(
+                    upperBound,
+                    targetHeight
+                            + maximumVerticalDrop
+                            - hipAtZeroBodyTranslation.y);
+            hasConstraint = true;
+        }
+
+        if (!hasConstraint) {
+            return boundedDesired;
+        }
+        if (!impossibleIntersection && lowerBound <= upperBound + EPSILON) {
+            return (float) Mth.clamp(
+                    boundedDesired,
+                    lowerBound,
+                    upperBound);
+        }
+
+        // Conflicting contacts cannot all be satisfied at this body angle.
+        // Reuse the deterministic least-violation solver instead of allowing
+        // frame-to-frame smoothing history to decide which foot clips.
+        return (float) Mth.clamp(
+                calculateBodyTranslationY(
+                        config,
+                        samples,
+                        bodyPitchRadians,
+                        bodyRollRadians),
+                -limit,
+                limit);
+    }
+
     public static List<DinosaurLegPose> solve(
             DinosaurProceduralConfig config,
             List<DinosaurTerrainSample> samples,
@@ -146,7 +252,7 @@ public final class DinosaurLegIkSolver {
                 bodyTranslationY,
                 bodyPitchRadians,
                 bodyRollRadians,
-                sample.valid() && sample.supportWeight() >= 0.95F,
+                sample.plantedCandidate(),
                 sample.valid());
     }
 
@@ -229,7 +335,8 @@ public final class DinosaurLegIkSolver {
             boolean terrainContact) {
         double upperLength = rig.upperLength();
         double lowerLength = rig.lowerLength();
-        double minReach = minimumReach(config, rig);
+        double preferredMinReach = minimumReach(config, rig);
+        double physicalMinReach = physicalMinimumReach(rig);
         double maxReach = maximumReach(config, rig);
         Vec3 hip = hipPosition(rig);
         Vec3 target = targetInBodySpace(
@@ -242,10 +349,20 @@ public final class DinosaurLegIkSolver {
         Vec3 requestedOffset = target.subtract(hip);
         double requestedReach = requestedOffset.length();
         boolean targetBelowHip = target.y < hip.y - EPSILON;
-        boolean reachable = targetBelowHip
-                && requestedReach >= minReach - EPSILON
-                && requestedReach <= maxReach + EPSILON;
-        double solvedReach = Mth.clamp(requestedReach, minReach, maxReach);
+        DinosaurLegReachStatus reachStatus;
+        if (!targetBelowHip) {
+            reachStatus = DinosaurLegReachStatus.TARGET_NOT_BELOW_HIP;
+        } else if (requestedReach < physicalMinReach - EPSILON) {
+            reachStatus = DinosaurLegReachStatus.TOO_CLOSE;
+        } else if (requestedReach < preferredMinReach - EPSILON) {
+            reachStatus = DinosaurLegReachStatus.COMPRESSED;
+        } else if (requestedReach > maxReach + EPSILON) {
+            reachStatus = DinosaurLegReachStatus.TOO_FAR;
+        } else {
+            reachStatus = DinosaurLegReachStatus.REACHABLE;
+        }
+        double solvedReach =
+                Mth.clamp(requestedReach, physicalMinReach, maxReach);
         Vec3 direction = safeLegDirection(requestedOffset, targetBelowHip);
 
         double along = (upperLength * upperLength
@@ -298,8 +415,8 @@ public final class DinosaurLegIkSolver {
                 (float) solvedFootWorld.y,
                 (float) (solvedReach / (upperLength + lowerLength)),
                 terrainContact,
-                planted && reachable,
-                reachable,
+                planted && reachStatus.reachable(),
+                reachStatus,
                 false);
     }
 
@@ -438,9 +555,13 @@ public final class DinosaurLegIkSolver {
             DinosaurProceduralConfig config,
             DinosaurLegRig rig) {
         return Math.max(
-                Math.abs(rig.upperLength() - rig.lowerLength()) + EPSILON,
+                physicalMinimumReach(rig),
                 (rig.upperLength() + rig.lowerLength())
                         * config.minLegReachFraction());
+    }
+
+    private static double physicalMinimumReach(DinosaurLegRig rig) {
+        return Math.abs(rig.upperLength() - rig.lowerLength()) + EPSILON;
     }
 
     private static double maximumReach(

@@ -13,41 +13,40 @@ public record DinosaurLegPose(
         float extensionFraction,
         boolean terrainContact,
         boolean planted,
-        boolean reachable,
+        DinosaurLegReachStatus reachStatus,
         boolean forcedMaximumExtension) {
-    public DinosaurLegPose withRotations(
-            DinosaurBoneRotation hip,
-            DinosaurBoneRotation knee,
-            DinosaurBoneRotation foot) {
-        return new DinosaurLegPose(
-                this.legId,
-                hip,
-                knee,
-                foot,
-                this.targetFootHeightOffset,
-                this.solvedFootHeightOffset,
-                this.extensionFraction,
-                this.terrainContact,
-                this.planted,
-                this.reachable,
-                this.forcedMaximumExtension);
+    public DinosaurLegPose {
+        if (reachStatus == null) {
+            throw new IllegalArgumentException("Leg reach status is required");
+        }
     }
 
-    public DinosaurLegPose withSupportState(
-            boolean terrainContact,
-            boolean planted,
-            boolean reachable) {
+    public boolean reachable() {
+        return this.reachStatus.reachable();
+    }
+
+    /**
+     * Keeps the solved geometry from this pose while restoring the terrain
+     * request that caused it. Maximum-extension recovery uses this so debug
+     * output still describes the real floor target instead of replacing it
+     * with the synthetic fully extended target.
+     */
+    public DinosaurLegPose withRequestedState(DinosaurLegPose requested) {
+        if (!this.legId.equals(requested.legId)) {
+            throw new IllegalArgumentException(
+                    "Cannot copy contact state between different legs");
+        }
         return new DinosaurLegPose(
                 this.legId,
                 this.hipRotation,
                 this.kneeRotation,
                 this.footRotation,
-                this.targetFootHeightOffset,
+                requested.targetFootHeightOffset,
                 this.solvedFootHeightOffset,
                 this.extensionFraction,
-                terrainContact,
-                planted,
-                reachable,
+                requested.terrainContact,
+                requested.planted,
+                requested.reachStatus,
                 this.forcedMaximumExtension);
     }
 
@@ -62,7 +61,7 @@ public record DinosaurLegPose(
                 this.extensionFraction,
                 this.terrainContact,
                 this.planted,
-                this.reachable,
+                this.reachStatus,
                 true);
     }
 }

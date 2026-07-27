@@ -28,8 +28,11 @@ Cada pata se resuelve en tres dimensiones:
   horizontal.
 
 «Estirar» una pata significa abrir la rodilla sin escalar la anatomía. El
-alcance útil del prototipo está entre el 35 % y el 98,5 %, evitando tanto el
-plegado degenerado como la singularidad de una cadena perfectamente recta.
+intervalo preferido del prototipo está entre el 35 % y el 98,5 %. El límite
+superior es anatómico y nunca se sobrepasa. El inferior es una preferencia:
+si un apoyo real (por ejemplo, una slab alta) queda más cerca, la rodilla
+puede plegarse hasta el mínimo físico de la cadena para conservar el contacto
+sin atravesar el bloque.
 
 Ese máximo es único. Fuera de una caída, una pata sin apoyo puede conservar su
 pose acotada normal para no estirarse agresivamente sobre cada hueco pequeño.
@@ -40,14 +43,17 @@ bajo alcanzable. `terrainContact()`, `planted()` y `reachable()` conservan sus
 valores lógicos originales, por lo que el vacío no se convierte en apoyo ni se
 alarga ningún hueso. La regla recorre todas las extremidades declaradas en
 `config.legs()`; no distingue patas delanteras, traseras, cuadrúpedos ni
-bípedos.
+bípedos. Cada extremidad se evalúa de forma independiente: que una o dos patas
+ya estén extendidas no impide que una tercera pata sin apoyo también alcance
+su máximo.
 
-El estado de contacto acompaña a la pose suavizada y se conserva al compensar
-el bob vertical de la animación. La pose de extensión máxima es una excepción
-intencional al suavizado articular normal: se vuelve a resolver contra el
-pitch, roll y root Y ya suavizados de ese frame. Así el indicador lógico
-`e0.985` coincide con los huesos que se dibujan y no describe únicamente un
-objetivo al que las rodillas aún están interpolando.
+El render ya no interpola los ángulos de rodilla por separado. Primero suaviza
+pitch, roll y root Y; después proyecta root Y al intervalo físico común de los
+apoyos reales y vuelve a resolver todas las cadenas contra ese mismo cuerpo.
+Así no existe una postura corporal dibujada con patas calculadas para otra
+postura. El bob vertical de la animación base se incorpora con otra resolución
+IK exacta. Los indicadores `MAX`, `FLEX` y el error vertical del depurador
+describen por tanto los huesos que realmente se dibujan ese frame.
 
 El cálculo vive en el paquete común
 `com.wachi.mse.entity.dinosaur.procedural`. No consulta IA, navegación,
@@ -99,6 +105,12 @@ Los contactos con peso de apoyo ajustan por mínimos cuadrados el plano:
 
 `y = lateral * x + longitudinal * z + altura`
 
+Solo las `VoxelShape` realmente encontradas participan en ese ajuste. La Y
+sintética que representa el límite inferior de una sonda vacía no se usa como
+si fuese terreno. Cuando la postura ya es inestable, una fase separada inclina
+el cuerpo de forma limitada hacia la dirección de caída calculada por el
+sistema de equilibrio.
+
 La X usada es la X ya horneada por GeckoLib. GeckoLib invierte la X de los
 pivotes Bedrock/Blockbench; aplicar esa misma conversión al muestreo corrige
 el error anterior en el que una trampilla bajo la pata izquierda hacía
@@ -144,8 +156,18 @@ límite; el solver no usa una altura arbitraria ni un alcance visual distinto.
 
 El solver busca numéricamente la traslación Y que minimiza las violaciones de
 alcance de todas las patas realmente apoyadas. Después resuelve cada cadena
-con IK de dos segmentos en 3D y marca `reachable()` como falso si tuvo que
-limitar el objetivo.
+con IK de dos segmentos en 3D y conserva cuatro causas distintas:
+
+- `OK`: objetivo dentro del intervalo preferido;
+- `FLEX`: contacto físicamente alcanzable que exige más flexión de la
+  preferida; sigue siendo un apoyo válido y se resuelve exactamente;
+- `FAR`: objetivo por debajo del alcance máximo;
+- `NEAR`/`HIGH`: geometría realmente imposible por proximidad o por quedar a
+  la altura de la cadera.
+
+Solo `FAR` o la ausencia de terreno activan extensión máxima durante una
+recuperación. Un contacto `FLEX` nunca puede convertirse en extensión de caída
+ni atravesar el bloque que lo sostiene.
 
 ## Estabilidad y caída desde bordes
 
@@ -272,6 +294,8 @@ Con F3 visible se muestran:
 
 - contacto, altura, peso, ángulo de rodilla y extensión de cada pata;
 - objetivo y punto alcanzado por IK;
+- estado `OK`, `FLEX`, `FAR`, `NEAR`, `HIGH` o `VOID`, más el error vertical
+  `d` entre objetivo y pie resuelto;
 - verde cuando es alcanzable y magenta cuando hubo límite;
 - inclinación aplicada y pendiente medida por separado;
 - conteos dinámicos `IK/total` y `ground/total`;
@@ -286,9 +310,9 @@ especies que no tengan exactamente cuatro extremidades.
 
 ## Verificaciones
 
-- `gradlew compileJava`: correcto.
+- `gradlew build`: correcto.
 - servidor aislado con navegación anulada: sobre un único bloque lateral pasó
-  de `X=1,40` a `X=3,85` sin cambiar `Z=0,50`, alejándose únicamente del
+  de `X=1,40` a `X=3,55` sin cambiar `Z=0,50`, alejándose únicamente del
   apoyo residual;
 - el objetivo inferior sintético produjo extensión `0,985000`, igual al
   máximo configurado `0,985000`;
@@ -301,6 +325,15 @@ especies que no tengan exactamente cuatro extremidades.
 - una pata sin terreno y una pata con terreno justo en el límite comparten la
   misma extensión máxima durante una recuperación, sin escalado óseo ni apoyo
   lógico ficticio;
+- tres patas sin apoyo se extienden de forma independiente aunque la cuarta
+  sea el único contacto real;
+- un apoyo alto dentro del alcance físico se clasifica como `FLEX`, permanece
+  plantado y conserva error vertical cero;
+- la traslación corporal suavizada se restringe al intervalo de los apoyos
+  reales, por lo que una slab no puede quedar atravesada durante la
+  interpolación;
+- las rotaciones visibles se recalculan después del suavizado corporal en vez
+  de interpolar huesos de forma independiente;
 - la dirección de caída prioriza el centro ponderado del apoyo residual del
   AABB y se aleja de él;
 - una ruta activa solo exime fases de paso normales: la pérdida real de terreno

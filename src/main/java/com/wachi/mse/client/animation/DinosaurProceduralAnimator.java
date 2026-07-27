@@ -10,7 +10,9 @@ import com.wachi.mse.entity.dinosaur.procedural.DinosaurLegIkSolver;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurLegPose;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurOrientationPose;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurProceduralPose;
+import com.wachi.mse.entity.dinosaur.procedural.DinosaurTerrainSample;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -32,12 +34,25 @@ public final class DinosaurProceduralAnimator {
         if (previous == null
                 || renderTime < previous.renderTime()
                 || renderTime - previous.renderTime() > MAX_SMOOTHING_GAP_TICKS) {
+            float bodyTranslationY =
+                    DinosaurLegIkSolver.constrainBodyTranslationY(
+                            config,
+                            target.samples(),
+                            target.legs(),
+                            target.targetPitchRadians(),
+                            target.targetRollRadians(),
+                            target.targetBodyTranslationYBlocks());
+            List<DinosaurLegPose> legs = solveVisualLegs(
+                    target,
+                    config,
+                    bodyTranslationY,
+                    target.targetPitchRadians(),
+                    target.targetRollRadians());
             SmoothedPose initial = new SmoothedPose(
                     target.targetPitchRadians(),
                     target.targetRollRadians(),
-                    target.targetBodyTranslationYBlocks(),
+                    bodyTranslationY,
                     target.orientation(),
-                    target.legs(),
                     renderTime);
             this.smoothedPoses.put(entity, initial);
             return target.withSmoothedValues(
@@ -45,25 +60,55 @@ public final class DinosaurProceduralAnimator {
                     initial.roll(),
                     initial.bodyTranslationY(),
                     initial.orientation(),
-                    initial.legs());
+                    legs);
         }
         if (renderTime == previous.renderTime()) {
+            float bodyTranslationY =
+                    DinosaurLegIkSolver.constrainBodyTranslationY(
+                            config,
+                            target.samples(),
+                            target.legs(),
+                            previous.pitch(),
+                            previous.roll(),
+                            previous.bodyTranslationY());
+            List<DinosaurLegPose> legs = solveVisualLegs(
+                    target,
+                    config,
+                    bodyTranslationY,
+                    previous.pitch(),
+                    previous.roll());
+            this.smoothedPoses.put(
+                    entity,
+                    new SmoothedPose(
+                            previous.pitch(),
+                            previous.roll(),
+                            bodyTranslationY,
+                            previous.orientation(),
+                            renderTime));
             return target.withSmoothedValues(
                     previous.pitch(),
                     previous.roll(),
-                    previous.bodyTranslationY(),
+                    bodyTranslationY,
                     previous.orientation(),
-                    previous.legs());
+                    legs);
         }
 
         double elapsedSeconds = (renderTime - previous.renderTime()) / 20.0;
         float alpha = (float) (1.0 - Math.exp(-config.smoothingResponsePerSecond() * elapsedSeconds));
         float pitch = lerp(previous.pitch(), target.targetPitchRadians(), alpha);
         float roll = lerp(previous.roll(), target.targetRollRadians(), alpha);
-        float bodyTranslationY = lerp(
+        float desiredBodyTranslationY = lerp(
                 previous.bodyTranslationY(),
                 target.targetBodyTranslationYBlocks(),
                 alpha);
+        float bodyTranslationY =
+                DinosaurLegIkSolver.constrainBodyTranslationY(
+                        config,
+                        target.samples(),
+                        target.legs(),
+                        pitch,
+                        roll,
+                        desiredBodyTranslationY);
         float orientationAlpha = (float) (1.0 - Math.exp(
                 -config.orientation().visualSmoothingResponsePerSecond()
                         * elapsedSeconds));
@@ -77,10 +122,8 @@ public final class DinosaurProceduralAnimator {
                         previous.orientation().pitchRadians(),
                         target.orientation().targetPitchRadians(),
                         orientationAlpha));
-        List<DinosaurLegPose> legs = smoothLegs(
-                previous.legs(),
-                target.legs(),
-                alpha,
+        List<DinosaurLegPose> legs = solveVisualLegs(
+                target,
                 config,
                 bodyTranslationY,
                 pitch,
@@ -92,7 +135,6 @@ public final class DinosaurProceduralAnimator {
                         roll,
                         bodyTranslationY,
                         orientation,
-                        legs,
                         renderTime));
         return target.withSmoothedValues(
                 pitch,
@@ -177,33 +219,13 @@ public final class DinosaurProceduralAnimator {
         }
 
         DinosaurLegRig rig = config.leg(smoothedLeg.legId());
-        DinosaurLegPose withoutAnimation = solveForBodyHeight(
-                config,
-                rig,
-                smoothedLeg,
-                pose.bodyTranslationYBlocks(),
-                pose.pitchRadians(),
-                pose.rollRadians());
-        DinosaurLegPose withAnimation = solveForBodyHeight(
+        return solveForBodyHeight(
                 config,
                 rig,
                 smoothedLeg,
                 pose.bodyTranslationYBlocks() + animationBodyY,
                 pose.pitchRadians(),
                 pose.rollRadians());
-        return smoothedLeg.withRotations(
-                addRotationDelta(
-                        smoothedLeg.hipRotation(),
-                        withoutAnimation.hipRotation(),
-                        withAnimation.hipRotation()),
-                addRotationDelta(
-                        smoothedLeg.kneeRotation(),
-                        withoutAnimation.kneeRotation(),
-                        withAnimation.kneeRotation()),
-                addRotationDelta(
-                        smoothedLeg.footRotation(),
-                        withoutAnimation.footRotation(),
-                        withAnimation.footRotation()));
     }
 
     private static DinosaurLegPose solveForBodyHeight(
@@ -220,7 +242,8 @@ public final class DinosaurProceduralAnimator {
                     bodyTranslationY,
                     bodyPitch,
                     bodyRoll,
-                    reference.terrainContact());
+                    reference.terrainContact())
+                    .withRequestedState(reference);
         }
         return DinosaurLegIkSolver.solveTarget(
                 config,
@@ -233,16 +256,31 @@ public final class DinosaurProceduralAnimator {
                 reference.terrainContact());
     }
 
-    private static List<DinosaurLegPose> smoothLegs(
-            List<DinosaurLegPose> previous,
-            List<DinosaurLegPose> target,
-            float alpha,
+    /**
+     * Solves every leg against the exact body transform that will be rendered.
+     * Interpolating nonlinear IK bone angles independently from the body can
+     * never preserve a planted contact, so body smoothing happens first and
+     * this pass reconstructs all limb rotations coherently afterwards.
+     */
+    private static List<DinosaurLegPose> solveVisualLegs(
+            DinosaurProceduralPose target,
             DinosaurProceduralConfig config,
             float bodyTranslationY,
             float bodyPitch,
             float bodyRoll) {
-        List<DinosaurLegPose> result = new ArrayList<>(target.size());
-        for (DinosaurLegPose targetLeg : target) {
+        Map<String, DinosaurTerrainSample> samplesByLegId = new HashMap<>();
+        for (DinosaurTerrainSample sample : target.samples()) {
+            samplesByLegId.put(sample.legId(), sample);
+        }
+
+        List<DinosaurLegPose> result =
+                new ArrayList<>(target.legs().size());
+        for (DinosaurLegPose targetLeg : target.legs()) {
+            DinosaurTerrainSample sample =
+                    samplesByLegId.get(targetLeg.legId());
+            boolean planted = sample != null
+                    ? sample.plantedCandidate()
+                    : targetLeg.planted();
             if (targetLeg.forcedMaximumExtension()) {
                 DinosaurLegPose extended =
                         DinosaurLegIkSolver.solveMaximumExtension(
@@ -252,43 +290,20 @@ public final class DinosaurProceduralAnimator {
                                 bodyPitch,
                                 bodyRoll,
                                 targetLeg.terrainContact());
-                result.add(extended.withSupportState(
-                        targetLeg.terrainContact(),
-                        targetLeg.planted(),
-                        targetLeg.reachable()));
+                result.add(extended.withRequestedState(targetLeg));
                 continue;
             }
-            DinosaurLegPose previousLeg = findLeg(previous, targetLeg);
-            if (previousLeg == null) {
-                result.add(targetLeg);
-                continue;
-            }
-            result.add(targetLeg.withRotations(
-                    lerpRotation(
-                            previousLeg.hipRotation(),
-                            targetLeg.hipRotation(),
-                            alpha),
-                    lerpRotation(
-                            previousLeg.kneeRotation(),
-                            targetLeg.kneeRotation(),
-                            alpha),
-                    lerpRotation(
-                            previousLeg.footRotation(),
-                            targetLeg.footRotation(),
-                            alpha)));
+            result.add(DinosaurLegIkSolver.solveTarget(
+                    config,
+                    config.leg(targetLeg.legId()),
+                    targetLeg.targetFootHeightOffset(),
+                    bodyTranslationY,
+                    bodyPitch,
+                    bodyRoll,
+                    planted,
+                    targetLeg.terrainContact()));
         }
         return List.copyOf(result);
-    }
-
-    private static DinosaurLegPose findLeg(
-            List<DinosaurLegPose> legs,
-            DinosaurLegPose target) {
-        for (DinosaurLegPose leg : legs) {
-            if (leg.legId().equals(target.legId())) {
-                return leg;
-            }
-        }
-        return null;
     }
 
     private static float lerp(float start, float end, float alpha) {
@@ -306,41 +321,11 @@ public final class DinosaurProceduralAnimator {
         return delta;
     }
 
-    private static DinosaurBoneRotation addRotationDelta(
-            DinosaurBoneRotation base,
-            DinosaurBoneRotation withoutAnimation,
-            DinosaurBoneRotation withAnimation) {
-        return new DinosaurBoneRotation(
-                base.xRadians()
-                        + angularDelta(
-                                withoutAnimation.xRadians(),
-                                withAnimation.xRadians()),
-                base.yRadians()
-                        + angularDelta(
-                                withoutAnimation.yRadians(),
-                                withAnimation.yRadians()),
-                base.zRadians()
-                        + angularDelta(
-                                withoutAnimation.zRadians(),
-                                withAnimation.zRadians()));
-    }
-
-    private static DinosaurBoneRotation lerpRotation(
-            DinosaurBoneRotation start,
-            DinosaurBoneRotation end,
-            float alpha) {
-        return new DinosaurBoneRotation(
-                start.xRadians() + angularDelta(start.xRadians(), end.xRadians()) * alpha,
-                start.yRadians() + angularDelta(start.yRadians(), end.yRadians()) * alpha,
-                start.zRadians() + angularDelta(start.zRadians(), end.zRadians()) * alpha);
-    }
-
     private record SmoothedPose(
             float pitch,
             float roll,
             float bodyTranslationY,
             DinosaurOrientationPose orientation,
-            List<DinosaurLegPose> legs,
             double renderTime) {
     }
 }

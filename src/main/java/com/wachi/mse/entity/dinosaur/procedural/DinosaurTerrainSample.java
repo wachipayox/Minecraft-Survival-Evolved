@@ -19,4 +19,9 @@ public record DinosaurTerrainSample(
         double heightOffset,
         boolean valid,
         float supportWeight) {
+    private static final float PLANTED_SUPPORT_WEIGHT = 0.95F;
+
+    public boolean plantedCandidate() {
+        return this.valid && this.supportWeight >= PLANTED_SUPPORT_WEIGHT;
+    }
 }

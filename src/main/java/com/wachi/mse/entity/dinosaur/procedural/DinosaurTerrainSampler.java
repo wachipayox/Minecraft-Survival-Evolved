@@ -229,12 +229,47 @@ public final class DinosaurTerrainSampler {
                     samples,
                     legs,
                     footprintSupport);
-            legs = extendTerrainLostLegsForRecovery(
-                    config,
-                    legs,
-                    bodyTranslationY,
-                    bodyPitch,
-                    bodyRoll);
+            if (stability.requiresRecovery()) {
+                RecoveryLean recoveryLean = calculateRecoveryLean(
+                        config,
+                        stability,
+                        bodyYawDegrees);
+                bodyPitch = Mth.clamp(
+                        bodyPitch + recoveryLean.pitchRadians(),
+                        -config.maxHybridPitchRadians(),
+                        config.maxHybridPitchRadians());
+                bodyRoll = Mth.clamp(
+                        bodyRoll + recoveryLean.rollRadians(),
+                        -config.maxHybridRollRadians(),
+                        config.maxHybridRollRadians());
+                bodyTranslationY = hasRealSupport
+                        ? DinosaurLegIkSolver.calculateBodyTranslationY(
+                                config,
+                                samples,
+                                bodyPitch,
+                                bodyRoll)
+                        : 0.0F;
+                legs = DinosaurLegIkSolver.solve(
+                        config,
+                        samples,
+                        gait,
+                        bodyTranslationY,
+                        bodyPitch,
+                        bodyRoll);
+                stability = DinosaurStabilitySolver.assess(
+                        config,
+                        origin,
+                        bodyYawDegrees,
+                        samples,
+                        legs,
+                        footprintSupport);
+                legs = extendTerrainLostLegsForRecovery(
+                        config,
+                        legs,
+                        bodyTranslationY,
+                        bodyPitch,
+                        bodyRoll);
+            }
         }
 
         return new DinosaurProceduralPose(
@@ -265,7 +300,8 @@ public final class DinosaurTerrainSampler {
             float bodyRollRadians) {
         List<DinosaurLegPose> result = new ArrayList<>(legs.size());
         for (DinosaurLegPose leg : legs) {
-            if (leg.terrainContact() && leg.reachable()) {
+            if (leg.terrainContact()
+                    && !leg.reachStatus().needsMaximumExtension()) {
                 result.add(leg);
                 continue;
             }
@@ -278,12 +314,40 @@ public final class DinosaurTerrainSampler {
                             bodyPitchRadians,
                             bodyRollRadians,
                             leg.terrainContact());
-            result.add(extended.withSupportState(
-                    leg.terrainContact(),
-                    leg.planted(),
-                    leg.reachable()));
+            result.add(extended.withRequestedState(leg));
         }
         return List.copyOf(result);
+    }
+
+    /**
+     * Terrain fitting describes real ground only. Once balance is already
+     * known to be lost, this separate response lowers the body toward the
+     * authoritative fall direction without allowing missing samples to
+     * masquerade as a terrain plane.
+     */
+    private static RecoveryLean calculateRecoveryLean(
+            DinosaurProceduralConfig config,
+            DinosaurStabilityAssessment stability,
+            float bodyYawDegrees) {
+        Vec3 fallDirection = stability.fallDirectionWorld();
+        double horizontalLengthSquared =
+                fallDirection.x * fallDirection.x
+                        + fallDirection.z * fallDirection.z;
+        if (horizontalLengthSquared <= SAMPLE_EPSILON) {
+            return RecoveryLean.NONE;
+        }
+
+        double inverseLength = 1.0 / Math.sqrt(horizontalLengthSquared);
+        double worldX = fallDirection.x * inverseLength;
+        double worldZ = fallDirection.z * inverseLength;
+        double modelYawRadians = Math.toRadians(180.0F - bodyYawDegrees);
+        double sinYaw = Math.sin(modelYawRadians);
+        double cosYaw = Math.cos(modelYawRadians);
+        double renderedModelX = cosYaw * worldX - sinYaw * worldZ;
+        double modelZ = sinYaw * worldX + cosYaw * worldZ;
+        return new RecoveryLean(
+                (float) (modelZ * config.maxHybridPitchRadians()),
+                (float) (-renderedModelX * config.maxHybridRollRadians()));
     }
 
     private static DinosaurOrientationPose orientationPose(
@@ -540,11 +604,14 @@ public final class DinosaurTerrainSampler {
     }
 
     /**
-     * Weighted least-squares fit of {@code y = ax + bz + c}. A biped whose
-     * feet share Z can still resolve roll; a layout with no longitudinal or
-     * lateral spread simply leaves that axis unresolved. Collinear diagonal
-     * supports deliberately resolve only their strongest axis because one
-     * line cannot uniquely determine a two-dimensional terrain plane.
+     * Weighted least-squares fit of {@code y = ax + bz + c} using real
+     * collision contacts only. Missing samples carry a bounded visual drop,
+     * but that synthetic Y must never be interpreted as terrain. A biped
+     * whose feet share Z can still resolve roll; a layout with no
+     * longitudinal or lateral spread simply leaves that axis unresolved.
+     * Collinear diagonal supports deliberately resolve only their strongest
+     * axis because one line cannot uniquely determine a two-dimensional
+     * terrain plane.
      */
     private static PlaneSlope fitTerrainPlane(
             DinosaurProceduralConfig config,
@@ -555,7 +622,7 @@ public final class DinosaurTerrainSampler {
         double weightedY = 0.0;
         for (DinosaurTerrainSample sample : samples) {
             double weight = sample.supportWeight();
-            if (weight <= SAMPLE_EPSILON) {
+            if (!sample.valid() || weight <= SAMPLE_EPSILON) {
                 continue;
             }
             DinosaurLegRig leg = config.leg(sample.legId());
@@ -578,7 +645,7 @@ public final class DinosaurTerrainSampler {
         double zy = 0.0;
         for (DinosaurTerrainSample sample : samples) {
             double weight = sample.supportWeight();
-            if (weight <= SAMPLE_EPSILON) {
+            if (!sample.valid() || weight <= SAMPLE_EPSILON) {
                 continue;
             }
             DinosaurLegRig leg = config.leg(sample.legId());
@@ -727,6 +794,13 @@ public final class DinosaurTerrainSampler {
     }
 
     private record GroundHit(Vec3 position, double distanceSquared) {
+    }
+
+    private record RecoveryLean(
+            float pitchRadians,
+            float rollRadians) {
+        private static final RecoveryLean NONE =
+                new RecoveryLean(0.0F, 0.0F);
     }
 
     private record PlaneSlope(

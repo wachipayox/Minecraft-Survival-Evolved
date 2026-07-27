@@ -95,7 +95,7 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
             Gizmos.billboardText(
                     String.format(
                             Locale.ROOT,
-                            "%s %+.2f w%.2f k%+.0f\u00b0 e%.2f%s",
+                            "%s h%+.2f w%.2f k%+.0f\u00b0 e%.2f %s d%+.2f%s",
                             sample.shortName(),
                             sample.heightOffset(),
                             sample.supportWeight(),
@@ -103,6 +103,11 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
                                     ? 0.0
                                     : Math.toDegrees(leg.kneeRotation().xRadians()),
                             leg == null ? 0.0 : leg.extensionFraction(),
+                            leg == null ? "--" : legStateLabel(leg),
+                            leg == null
+                                    ? 0.0
+                                    : leg.solvedFootHeightOffset()
+                                            - leg.targetFootHeightOffset(),
                             leg != null && leg.forcedMaximumExtension()
                                     ? " MAX"
                                     : ""),
@@ -246,6 +251,19 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
             return 0xFFAAAAAA;
         }
         return sample.valid() ? 0xFFFFFFFF : 0xFFFF5555;
+    }
+
+    private static String legStateLabel(DinosaurLegPose leg) {
+        if (!leg.terrainContact()) {
+            return "VOID";
+        }
+        return switch (leg.reachStatus()) {
+            case REACHABLE -> "OK";
+            case COMPRESSED -> "FLEX";
+            case TOO_CLOSE -> "NEAR";
+            case TOO_FAR -> "FAR";
+            case TARGET_NOT_BELOW_HIP -> "HIGH";
+        };
     }
 
     private static String stabilityLabel(DinosaurStabilityAssessment stability) {
