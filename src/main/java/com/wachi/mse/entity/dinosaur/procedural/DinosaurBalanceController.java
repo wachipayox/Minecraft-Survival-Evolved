@@ -6,9 +6,11 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Authoritative ledge recovery for a procedural dinosaur.
+ * Movement-owner ledge recovery for a procedural dinosaur.
  *
- * <p>The terrain probe runs every other server tick, staggered by entity ID.
+ * <p>The terrain probe runs every other movement-owner tick, staggered by
+ * entity ID. That owner is the server for an autonomous mob and the
+ * controlling player's local client for a vanilla mount.
  * Once the centre of mass remains outside the support polygon for the
  * configured grace period, a bounded horizontal contribution moves the main
  * collision box off the ledge and lets normal Minecraft gravity take over.
@@ -34,7 +36,7 @@ public final class DinosaurBalanceController {
     public void tick(
             Mob dinosaur,
             DinosaurProceduralConfig config) {
-        if (dinosaur.level().isClientSide()
+        if (!ownsMovementIntegration(dinosaur)
                 || dinosaur.isNoAi()
                 || !dinosaur.isAlive()
                 || dinosaur.isPassenger()
@@ -63,6 +65,16 @@ public final class DinosaurBalanceController {
         if (this.state == State.FALLING) {
             this.tickCommittedFall(dinosaur, config);
         }
+    }
+
+    /**
+     * Vanilla gives a ridden living entity's movement integration to the
+     * controlling player's local client. Unridden mobs remain server-owned.
+     * Running balance on the same owner keeps its contribution inside the
+     * movement packet instead of letting the next ridden tick erase it.
+     */
+    private static boolean ownsMovementIntegration(Mob dinosaur) {
+        return dinosaur.isLocalInstanceAuthoritative();
     }
 
     public State state() {
@@ -228,9 +240,8 @@ public final class DinosaurBalanceController {
         if (correction <= 0.0) {
             return;
         }
-        // Entity#push also marks the velocity as externally changed, keeping
-        // client interpolation in step with the authoritative correction. It
-        // adds this contribution to navigation instead of replacing it.
+        // Entity#push adds this contribution to the velocity already
+        // integrated by navigation or ridden travel instead of replacing it.
         dinosaur.push(
                 direction.x * correction,
                 0.0,

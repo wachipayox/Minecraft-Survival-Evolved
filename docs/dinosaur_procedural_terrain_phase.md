@@ -43,7 +43,11 @@ alarga ningún hueso. La regla recorre todas las extremidades declaradas en
 bípedos.
 
 El estado de contacto acompaña a la pose suavizada y se conserva al compensar
-el bob vertical de la animación.
+el bob vertical de la animación. La pose de extensión máxima es una excepción
+intencional al suavizado articular normal: se vuelve a resolver contra el
+pitch, roll y root Y ya suavizados de ese frame. Así el indicador lógico
+`e0.985` coincide con los huesos que se dibujan y no describe únicamente un
+objetivo al que las rodillas aún están interpolando.
 
 El cálculo vive en el paquete común
 `com.wachi.mse.entity.dinosaur.procedural`. No consulta IA, navegación,
@@ -165,8 +169,8 @@ El resultado geométrico tiene tres etapas lógicas:
 
 1. estable: el centro está dentro del polígono o de su pequeño margen;
 2. recuperación: permanece fuera, pero todavía corre una gracia de 8 ticks;
-3. caída: el servidor aplica una aceleración horizontal acotada desde el
-   borde de soporte hacia el lado sin apoyo.
+3. caída: el dueño vanilla del movimiento aplica una aceleración horizontal
+   acotada desde el borde de soporte hacia el lado sin apoyo.
 
 Si el polígono de patas es inestable, se mide también la superficie real del
 `AABB` que todavía descansa sobre colisiones. Se intersecta la base de la
@@ -211,6 +215,15 @@ Mientras siga en suelo vuelve a evaluar el soporte cada dos ticks, de modo que
 puede recuperar estabilidad por su propio movimiento. Al dejar el suelo
 conserva el empuje durante 16 ticks como máximo, suficiente para que el borde
 de la hitbox no alterne entre apoyo y aire.
+
+El controlador se ejecuta al final del tick de la entidad, después de
+`travel`: tanto la navegación autónoma como el movimiento solicitado por un
+jinete ya han aportado su velocidad cuando se suma la caída. Sin jinete lo
+ejecuta el servidor; durante una montura vanilla, donde el cliente local del
+pasajero es quien integra y transmite el movimiento del vehículo, lo ejecuta
+ese mismo dueño local. Montar al animal no cambia por tanto la evaluación de
+las esquinas ni puede sustituir el empuje de equilibrio con la velocidad de
+montura.
 
 `NoAI` es una congelación especial de Minecraft: `LivingEntity` deja de
 ejecutar `travel`, que también integra gravedad y movimiento impuesto. Por
@@ -283,7 +296,8 @@ especies que no tengan exactamente cuatro extremidades.
 - la X de Blockbench se convierte explícitamente a la X horneada por
   GeckoLib;
 - una pata sin contacto implicada en una recuperación conserva su extensión
-  máxima incluso durante la compensación de la animación base;
+  máxima real incluso durante el suavizado corporal y la compensación de la
+  animación base;
 - una pata sin terreno y una pata con terreno justo en el límite comparten la
   misma extensión máxima durante una recuperación, sin escalado óseo ni apoyo
   lógico ficticio;
@@ -291,6 +305,8 @@ especies que no tengan exactamente cuatro extremidades.
   AABB y se aleja de él;
 - una ruta activa solo exime fases de paso normales: la pérdida real de terreno
   sigue generando un vector aditivo de caída;
+- el mismo vector se añade después del movimiento de montura, por lo que llevar
+  pasajero no inmuniza al dinosaurio frente a una esquina;
 - el modelo fuente conserva sus 23 huesos y no fue reexportado;
 - no se usa `onGround()` ni estado de IA para calcular la pose.
 

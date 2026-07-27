@@ -77,7 +77,14 @@ public final class DinosaurProceduralAnimator {
                         previous.orientation().pitchRadians(),
                         target.orientation().targetPitchRadians(),
                         orientationAlpha));
-        List<DinosaurLegPose> legs = smoothLegs(previous.legs(), target.legs(), alpha);
+        List<DinosaurLegPose> legs = smoothLegs(
+                previous.legs(),
+                target.legs(),
+                alpha,
+                config,
+                bodyTranslationY,
+                pitch,
+                roll);
         this.smoothedPoses.put(
                 entity,
                 new SmoothedPose(
@@ -170,24 +177,20 @@ public final class DinosaurProceduralAnimator {
         }
 
         DinosaurLegRig rig = config.leg(smoothedLeg.legId());
-        DinosaurLegPose withoutAnimation = DinosaurLegIkSolver.solveTarget(
+        DinosaurLegPose withoutAnimation = solveForBodyHeight(
                 config,
                 rig,
-                smoothedLeg.targetFootHeightOffset(),
+                smoothedLeg,
                 pose.bodyTranslationYBlocks(),
                 pose.pitchRadians(),
-                pose.rollRadians(),
-                smoothedLeg.planted(),
-                smoothedLeg.terrainContact());
-        DinosaurLegPose withAnimation = DinosaurLegIkSolver.solveTarget(
+                pose.rollRadians());
+        DinosaurLegPose withAnimation = solveForBodyHeight(
                 config,
                 rig,
-                smoothedLeg.targetFootHeightOffset(),
+                smoothedLeg,
                 pose.bodyTranslationYBlocks() + animationBodyY,
                 pose.pitchRadians(),
-                pose.rollRadians(),
-                smoothedLeg.planted(),
-                smoothedLeg.terrainContact());
+                pose.rollRadians());
         return smoothedLeg.withRotations(
                 addRotationDelta(
                         smoothedLeg.hipRotation(),
@@ -203,12 +206,58 @@ public final class DinosaurProceduralAnimator {
                         withAnimation.footRotation()));
     }
 
+    private static DinosaurLegPose solveForBodyHeight(
+            DinosaurProceduralConfig config,
+            DinosaurLegRig rig,
+            DinosaurLegPose reference,
+            float bodyTranslationY,
+            float bodyPitch,
+            float bodyRoll) {
+        if (reference.forcedMaximumExtension()) {
+            return DinosaurLegIkSolver.solveMaximumExtension(
+                    config,
+                    rig,
+                    bodyTranslationY,
+                    bodyPitch,
+                    bodyRoll,
+                    reference.terrainContact());
+        }
+        return DinosaurLegIkSolver.solveTarget(
+                config,
+                rig,
+                reference.targetFootHeightOffset(),
+                bodyTranslationY,
+                bodyPitch,
+                bodyRoll,
+                reference.planted(),
+                reference.terrainContact());
+    }
+
     private static List<DinosaurLegPose> smoothLegs(
             List<DinosaurLegPose> previous,
             List<DinosaurLegPose> target,
-            float alpha) {
+            float alpha,
+            DinosaurProceduralConfig config,
+            float bodyTranslationY,
+            float bodyPitch,
+            float bodyRoll) {
         List<DinosaurLegPose> result = new ArrayList<>(target.size());
         for (DinosaurLegPose targetLeg : target) {
+            if (targetLeg.forcedMaximumExtension()) {
+                DinosaurLegPose extended =
+                        DinosaurLegIkSolver.solveMaximumExtension(
+                                config,
+                                config.leg(targetLeg.legId()),
+                                bodyTranslationY,
+                                bodyPitch,
+                                bodyRoll,
+                                targetLeg.terrainContact());
+                result.add(extended.withSupportState(
+                        targetLeg.terrainContact(),
+                        targetLeg.planted(),
+                        targetLeg.reachable()));
+                continue;
+            }
             DinosaurLegPose previousLeg = findLeg(previous, targetLeg);
             if (previousLeg == null) {
                 result.add(targetLeg);

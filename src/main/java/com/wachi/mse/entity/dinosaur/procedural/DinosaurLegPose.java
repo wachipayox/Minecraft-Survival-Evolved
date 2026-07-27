@@ -13,7 +13,8 @@ public record DinosaurLegPose(
         float extensionFraction,
         boolean terrainContact,
         boolean planted,
-        boolean reachable) {
+        boolean reachable,
+        boolean forcedMaximumExtension) {
     public DinosaurLegPose withRotations(
             DinosaurBoneRotation hip,
             DinosaurBoneRotation knee,
@@ -28,7 +29,8 @@ public record DinosaurLegPose(
                 this.extensionFraction,
                 this.terrainContact,
                 this.planted,
-                this.reachable);
+                this.reachable,
+                this.forcedMaximumExtension);
     }
 
     public DinosaurLegPose withSupportState(
@@ -45,6 +47,22 @@ public record DinosaurLegPose(
                 this.extensionFraction,
                 terrainContact,
                 planted,
-                reachable);
+                reachable,
+                this.forcedMaximumExtension);
+    }
+
+    public DinosaurLegPose withForcedMaximumExtension() {
+        return new DinosaurLegPose(
+                this.legId,
+                this.hipRotation,
+                this.kneeRotation,
+                this.footRotation,
+                this.targetFootHeightOffset,
+                this.solvedFootHeightOffset,
+                this.extensionFraction,
+                this.terrainContact,
+                this.planted,
+                this.reachable,
+                true);
     }
 }

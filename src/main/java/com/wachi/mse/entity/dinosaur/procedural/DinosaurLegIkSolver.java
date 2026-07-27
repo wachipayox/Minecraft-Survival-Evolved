@@ -209,7 +209,8 @@ public final class DinosaurLegIkSolver {
                 bodyPitchRadians,
                 bodyRollRadians,
                 false,
-                terrainContact);
+                terrainContact)
+                .withForcedMaximumExtension();
     }
 
     /**
@@ -298,7 +299,8 @@ public final class DinosaurLegIkSolver {
                 (float) (solvedReach / (upperLength + lowerLength)),
                 terrainContact,
                 planted && reachable,
-                reachable);
+                reachable,
+                false);
     }
 
     private static double bodyHeightCost(

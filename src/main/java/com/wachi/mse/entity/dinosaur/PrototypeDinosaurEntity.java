@@ -12,7 +12,6 @@ import com.wachi.mse.entity.dinosaur.control.DinosaurLookControl;
 import com.wachi.mse.entity.dinosaur.control.DinosaurMoveControl;
 import com.wachi.mse.entity.dinosaur.navigation.DinosaurGroundPathNavigation;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurBalanceController;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.EntityType;
@@ -162,16 +161,14 @@ public final class PrototypeDinosaurEntity
     }
 
     @Override
-    protected void customServerAiStep(ServerLevel level) {
-        super.customServerAiStep(level);
-        this.balanceController.tick(this, this.proceduralConfig());
-    }
-
-    @Override
     public void tick() {
         super.tick();
-        if (!this.level().isClientSide() && this.isNoAi()) {
+        if (this.isNoAi()) {
             this.balanceController.reset();
+        } else {
+            // Run after travel on its vanilla movement owner: the server for
+            // autonomous mobs and the rider's local client for a mount.
+            this.balanceController.tick(this, this.proceduralConfig());
         }
     }
 

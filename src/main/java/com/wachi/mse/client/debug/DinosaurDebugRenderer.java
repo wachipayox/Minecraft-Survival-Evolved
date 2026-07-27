@@ -95,14 +95,17 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
             Gizmos.billboardText(
                     String.format(
                             Locale.ROOT,
-                            "%s %+.2f w%.2f k%+.0f\u00b0 e%.2f",
+                            "%s %+.2f w%.2f k%+.0f\u00b0 e%.2f%s",
                             sample.shortName(),
                             sample.heightOffset(),
                             sample.supportWeight(),
                             leg == null
                                     ? 0.0
                                     : Math.toDegrees(leg.kneeRotation().xRadians()),
-                            leg == null ? 0.0 : leg.extensionFraction()),
+                            leg == null ? 0.0 : leg.extensionFraction(),
+                            leg != null && leg.forcedMaximumExtension()
+                                    ? " MAX"
+                                    : ""),
                     point.add(0.0, 0.14, 0.0),
                     TextGizmo.Style
                             .forColorAndCentered(sampleTextColor(sample))
