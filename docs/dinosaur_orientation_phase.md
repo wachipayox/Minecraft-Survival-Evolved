@@ -60,8 +60,9 @@ distancia de anticipación deriva del radio de giro de la especie y de la
 velocidad solicitada. El objetivo solo sustituye al nodo exacto si un barrido
 de la hitbox confirma colisión libre y suelo continuo; en una esquina no
 segura se conserva el comportamiento vanilla. Al acercarse a un rumbo de 90
-grados, el avance baja progresivamente hasta la velocidad de maniobra, pero
-nunca se detiene para pivotar.
+grados no se reduce artificialmente la velocidad: el animal conserva el
+avance solicitado y acepta sobrepasar el objetivo para completar una curva,
+en lugar de intentar girar casi quieto.
 
 ## Montura de prueba y neutralidad
 
@@ -77,8 +78,9 @@ pero nunca se copia directamente al yaw corporal del dinosaurio:
 - las teclas laterales no crean strafe;
 - el yaw usa los mismos límites de grados por tick y por bloque recorrido que
   `DinosaurMoveControl` aplica al pathfinding;
-- el avance usa la misma reducción de velocidad cuando el error de rumbo es
-  grande;
+- el cuerpo sigue el yaw cervical efectivo, ya limitado y suavizado respecto
+  a la cámara, en vez de perseguir directamente el yaw bruto del jugador;
+- un error de rumbo grande no reduce la velocidad longitudinal solicitada;
 - mover la cámara estando quieto solo orienta cuello y cabeza dentro de sus
   límites, sin permitir un pivote corporal;
 - al avanzar hacia un rumbo distinto, el cuerpo converge describiendo una

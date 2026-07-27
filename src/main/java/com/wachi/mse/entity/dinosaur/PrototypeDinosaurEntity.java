@@ -139,7 +139,7 @@ public final class PrototypeDinosaurEntity
         }
         if (Math.abs(riddenInput.z) > 1.0E-4
                 && this.moveControl instanceof DinosaurMoveControl dinosaurMove) {
-            dinosaurMove.steerRiddenToward(controller.getYRot());
+            dinosaurMove.steerRiddenToward(this.yHeadRot);
         }
     }
 
@@ -158,13 +158,7 @@ public final class PrototypeDinosaurEntity
 
     @Override
     protected float getRiddenSpeed(Player controller) {
-        float headingMultiplier =
-                this.moveControl instanceof DinosaurMoveControl dinosaurMove
-                        ? dinosaurMove.speedMultiplierForHeading(
-                                controller.getYRot())
-                        : 1.0F;
-        return (float) this.getAttributeValue(Attributes.MOVEMENT_SPEED)
-                * headingMultiplier;
+        return (float) this.getAttributeValue(Attributes.MOVEMENT_SPEED);
     }
 
     @Override
