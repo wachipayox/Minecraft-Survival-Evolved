@@ -71,7 +71,7 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
             LivingEntity dinosaur) {
         float modelScale = ((ProceduralDinosaur) dinosaur)
                 .proceduralConfig()
-                .modelScale();
+                .scale();
         float markerScale = (float) Math.sqrt(modelScale);
         for (DinosaurTerrainSample sample : pose.samples()) {
             DinosaurLegPose leg = pose.leg(sample.legId());

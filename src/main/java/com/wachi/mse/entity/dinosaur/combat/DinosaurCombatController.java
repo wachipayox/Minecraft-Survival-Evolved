@@ -1,6 +1,6 @@
 package com.wachi.mse.entity.dinosaur.combat;
 
-import com.wachi.mse.entity.dinosaur.PrototypeDinosaurEntity;
+import com.wachi.mse.entity.dinosaur.DinosaurEntity;
 import com.wachi.mse.entity.dinosaur.config.DinosaurCombatConfig;
 import com.wachi.mse.entity.dinosaur.hitbox.DinosaurPoseTransforms;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurProceduralPose;
@@ -16,17 +16,21 @@ import net.minecraft.world.phys.AABB;
  * Executes data-driven attacks against animated body-part volumes.
  */
 public final class DinosaurCombatController {
-    private final PrototypeDinosaurEntity dinosaur;
+    private final DinosaurEntity dinosaur;
     private final Set<Integer> hitEntityIds = new HashSet<>();
     private int cooldownTicks;
 
-    public DinosaurCombatController(PrototypeDinosaurEntity dinosaur) {
+    public DinosaurCombatController(DinosaurEntity dinosaur) {
         this.dinosaur = dinosaur;
     }
 
     public boolean canStart(LivingEntity target) {
         if (this.cooldownTicks > 0
                 || this.dinosaur.activeAttack() != null
+                || this.dinosaur.proceduralConfig()
+                        .combat()
+                        .attacks()
+                        .isEmpty()
                 || !target.isAlive()
                 || !this.dinosaur.getSensing().hasLineOfSight(target)) {
             return false;
@@ -44,7 +48,7 @@ public final class DinosaurCombatController {
         AABB targetBounds = target.getBoundingBox();
         double tolerance = Math.max(
                 0.25,
-                0.2 * this.dinosaur.proceduralConfig().modelScale());
+                0.2 * this.dinosaur.proceduralConfig().scale());
         for (DinosaurCombatConfig.AttackVolume volume : attack.volumes()) {
             AABB strikeBounds = DinosaurPoseTransforms.attackVolumeBounds(
                     snapshot,

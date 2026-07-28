@@ -1,7 +1,6 @@
 package com.wachi.mse.client.renderer;
 
 import com.geckolib.constant.dataticket.DataTicket;
-import com.geckolib.model.DefaultedEntityGeoModel;
 import com.geckolib.renderer.GeoEntityRenderer;
 import com.geckolib.renderer.base.BoneSnapshots;
 import com.geckolib.renderer.base.GeoRenderState;
@@ -9,7 +8,7 @@ import com.geckolib.renderer.base.RenderPassInfo;
 import com.wachi.mse.MseMod;
 import com.wachi.mse.client.animation.DinosaurProceduralAnimator;
 import com.wachi.mse.client.debug.DinosaurDebugPoseStore;
-import com.wachi.mse.entity.dinosaur.PrototypeDinosaurEntity;
+import com.wachi.mse.entity.dinosaur.DinosaurEntity;
 import com.wachi.mse.entity.dinosaur.config.DinosaurProceduralConfig;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurProceduralPose;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurTerrainSampler;
@@ -19,8 +18,8 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.AABB;
 import org.jetbrains.annotations.Nullable;
 
-public final class PrototypeDinosaurRenderer
-        extends GeoEntityRenderer<PrototypeDinosaurEntity, LivingEntityRenderState> {
+public final class DinosaurRenderer<T extends DinosaurEntity>
+        extends GeoEntityRenderer<T, LivingEntityRenderState> {
     private static final DataTicket<DinosaurProceduralPose> PROCEDURAL_POSE =
             DataTicket.create(
                     MseMod.MOD_ID + ":dinosaur_procedural_pose",
@@ -29,24 +28,27 @@ public final class PrototypeDinosaurRenderer
             DataTicket.create(
                     MseMod.MOD_ID + ":dinosaur_procedural_config",
                     DinosaurProceduralConfig.class);
+    static final DataTicket<Identifier> MODEL =
+            DataTicket.create(
+                    MseMod.MOD_ID + ":dinosaur_model",
+                    Identifier.class);
 
     private final DinosaurProceduralAnimator proceduralAnimator = new DinosaurProceduralAnimator();
 
-    public PrototypeDinosaurRenderer(EntityRendererProvider.Context context) {
+    public DinosaurRenderer(EntityRendererProvider.Context context) {
         super(
                 context,
-                new DefaultedEntityGeoModel<>(
-                        Identifier.fromNamespaceAndPath(MseMod.MOD_ID, "prototype_dinosaur")));
+                new DinosaurProfileGeoModel<>());
     }
 
     @Override
-    protected AABB getBoundingBoxForCulling(PrototypeDinosaurEntity entity) {
+    protected AABB getBoundingBoxForCulling(T entity) {
         return entity.dinosaurVisualBounds();
     }
 
     @Override
     public void addRenderData(
-            PrototypeDinosaurEntity animatable,
+            T animatable,
             @Nullable Void relatedObject,
             LivingEntityRenderState renderState,
             float partialTick) {
@@ -57,6 +59,9 @@ public final class PrototypeDinosaurRenderer
                 this.proceduralAnimator.smooth(animatable, sampledPose, config, partialTick);
         ((GeoRenderState) renderState).addGeckolibData(PROCEDURAL_POSE, smoothedPose);
         ((GeoRenderState) renderState).addGeckolibData(PROCEDURAL_CONFIG, config);
+        ((GeoRenderState) renderState).addGeckolibData(
+                MODEL,
+                animatable.dinosaurProfile().model());
         DinosaurDebugPoseStore.update(animatable, smoothedPose);
     }
 

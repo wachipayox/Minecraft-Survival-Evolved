@@ -1,5 +1,8 @@
 package com.wachi.mse.entity.dinosaur.config;
 
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
+
 /**
  * Species-specific static balance and ledge recovery parameters.
  *
@@ -19,6 +22,42 @@ public record DinosaurStabilityConfig(
         double fallAccelerationPerTick,
         double maximumFallHorizontalSpeed,
         int airborneFallAssistTicks) {
+    public static final DinosaurStabilityConfig DEFAULT =
+            new DinosaurStabilityConfig(
+                    0.0,
+                    0.0,
+                    2.0 / 16.0,
+                    1.0,
+                    1.0 / 16.0,
+                    8,
+                    0.02F,
+                    0.008,
+                    0.075,
+                    16);
+    public static final Codec<DinosaurStabilityConfig> CODEC =
+            RecordCodecBuilder.create(instance -> instance.group(
+                    Codec.DOUBLE.optionalFieldOf("center_of_mass_x", 0.0)
+                            .forGetter(DinosaurStabilityConfig::centerOfMassModelX),
+                    Codec.DOUBLE.optionalFieldOf("center_of_mass_z", 0.0)
+                            .forGetter(DinosaurStabilityConfig::centerOfMassModelZ),
+                    Codec.DOUBLE.optionalFieldOf("foot_support_radius", 2.0 / 16.0)
+                            .forGetter(DinosaurStabilityConfig::footSupportRadius),
+                    Codec.DOUBLE.optionalFieldOf("awareness_leg_lengths", 1.0)
+                            .forGetter(DinosaurStabilityConfig::awarenessBeyondReachLegLengths),
+                    Codec.DOUBLE.optionalFieldOf("outside_tolerance", 1.0 / 16.0)
+                            .forGetter(DinosaurStabilityConfig::toleratedOutsideDistance),
+                    Codec.INT.optionalFieldOf("recovery_ticks", 8)
+                            .forGetter(DinosaurStabilityConfig::recoveryTicks),
+                    Codec.FLOAT.optionalFieldOf("maximum_static_activity", 0.02F)
+                            .forGetter(DinosaurStabilityConfig::maximumActivityForStaticBalance),
+                    Codec.DOUBLE.optionalFieldOf("fall_acceleration", 0.008)
+                            .forGetter(DinosaurStabilityConfig::fallAccelerationPerTick),
+                    Codec.DOUBLE.optionalFieldOf("maximum_fall_speed", 0.075)
+                            .forGetter(DinosaurStabilityConfig::maximumFallHorizontalSpeed),
+                    Codec.INT.optionalFieldOf("airborne_assist_ticks", 16)
+                            .forGetter(DinosaurStabilityConfig::airborneFallAssistTicks)
+            ).apply(instance, DinosaurStabilityConfig::new));
+
     public DinosaurStabilityConfig {
         if (!Double.isFinite(centerOfMassModelX)
                 || !Double.isFinite(centerOfMassModelZ)

@@ -1,0 +1,327 @@
+{
+  "model": "mc_evolved:prototype_dinosaur",
+  "animations": {
+    "idle": "",
+    "walk": ""
+  },
+  "stats": {
+    "max_health": 40.0,
+    "movement_speed": 0.2,
+    "attack_damage": 6.0,
+    "follow_range": 24.0,
+    "step_height": 0.6,
+    "riding_camera_distance": 4.0
+  },
+  "orientation": {
+    "max_neck_yaw": 60.0,
+    "body_turn_start_yaw": 50.0,
+    "body_turn_stop_yaw": 35.0,
+    "max_pitch_up": 25.0,
+    "max_pitch_down": 30.0,
+    "head_yaw_speed": 5.0,
+    "head_pitch_speed": 4.0,
+    "neck_recentering_speed": 3.0,
+    "max_body_yaw_change": 3.0,
+    "steering_degrees_per_block": 30.0,
+    "minimum_turning_distance": 0.001,
+    "look_turn_speed_modifier": 0.45,
+    "path_look_ahead_radius": 0.8,
+    "maximum_path_look_ahead": 4.0,
+    "visual_smoothing_response": 12.0
+  },
+  "terrain": {
+    "body_pivot_height": 0.875,
+    "foot_contact_height": 0.0,
+    "contact_patch_radius": 0.125,
+    "sample_above": 1.25,
+    "sample_below": 0.75,
+    "max_body_vertical_correction": 0.75,
+    "max_pitch": 35.0,
+    "max_roll": 15.0,
+    "slope_deadzone": 0.5
+  },
+  "leg_motion": {
+    "min_reach": 0.35,
+    "max_reach": 0.985,
+    "body_tilt_start": 0.6,
+    "body_tilt_slope_share": 0.35,
+    "max_hybrid_pitch": 10.0,
+    "max_hybrid_roll": 7.0,
+    "max_foot_pitch": 25.0,
+    "max_foot_roll": 25.0,
+    "smoothing_response": 9.0
+  },
+  "stability": {
+    "center_of_mass_x": 0.0,
+    "center_of_mass_z": 0.0,
+    "foot_support_radius": 0.125,
+    "awareness_leg_lengths": 1.0,
+    "outside_tolerance": 0.0625,
+    "recovery_ticks": 8,
+    "maximum_static_activity": 0.02,
+    "fall_acceleration": 0.008,
+    "maximum_fall_speed": 0.075,
+    "airborne_assist_ticks": 16
+  },
+  "navigation": {
+    "visited_nodes_multiplier": 3.0,
+    "local_planner_scale": 3.0,
+    "probe_body_widths": 1.25,
+    "minimum_probe_distance": 2.0,
+    "steering_samples_per_side": 5,
+    "steering_sample_degrees": 18.0,
+    "stuck_turn_delay": 8,
+    "stuck_turn_degrees_per_tick": 3.0,
+    "minimum_progress": 0.01
+  },
+  "body_bone": "body",
+  "look_chain": [
+    "neck_1",
+    "neck_2",
+    "head"
+  ],
+  "legs": [
+    {
+      "id": "front_left",
+      "upper": "leg_front_left",
+      "lower": "shin_front_left",
+      "foot": "foot_front_left",
+      "knee_bend": 0.0,
+      "gait_phase": -1.0,
+      "contact": {
+        "lift_off": 0.28,
+        "apex": 0.5,
+        "plant": 0.61
+      }
+    },
+    {
+      "id": "front_right",
+      "upper": "leg_front_right",
+      "lower": "shin_front_right",
+      "foot": "foot_front_right",
+      "knee_bend": 0.0,
+      "gait_phase": -1.0,
+      "contact": {
+        "lift_off": 0.846,
+        "apex": 0.0,
+        "plant": 0.235
+      }
+    },
+    {
+      "id": "back_left",
+      "upper": "leg_back_left",
+      "lower": "shin_back_left",
+      "foot": "foot_back_left",
+      "knee_bend": 0.0,
+      "gait_phase": -1.0,
+      "contact": {
+        "lift_off": 0.28,
+        "apex": 0.5,
+        "plant": 0.61
+      }
+    },
+    {
+      "id": "back_right",
+      "upper": "leg_back_right",
+      "lower": "shin_back_right",
+      "foot": "foot_back_right",
+      "knee_bend": 0.0,
+      "gait_phase": -1.0,
+      "contact": {
+        "lift_off": 0.846,
+        "apex": 0.0,
+        "plant": 0.235
+      }
+    }
+  ],
+  "gait": {
+    "stride_length": 3.2,
+    "animation_length": 2.0,
+    "full_activity_speed": 0.6,
+    "contact_blend_fraction": 0.04,
+    "default_airborne_fraction": 0.25,
+    "movement_blend_ticks": 6
+  },
+  "skeleton": {
+    "bones": [
+      {"name": "root", "parent": "", "pivot": [0.0, 0.0, 0.0]},
+      {"name": "body", "parent": "root", "pivot": [0.0, 0.875, 0.0]},
+      {"name": "chest", "parent": "body", "pivot": [0.0, 0.875, -0.4375]},
+      {"name": "neck_1", "parent": "chest", "pivot": [0.0, 1.0, -0.8125]},
+      {"name": "neck_2", "parent": "neck_1", "pivot": [0.0, 1.1875, -1.1875]},
+      {"name": "head", "parent": "neck_2", "pivot": [0.0, 1.4375, -1.5625]},
+      {"name": "jaw", "parent": "head", "pivot": [0.0, 1.3125, -1.8125]},
+      {"name": "pelvis", "parent": "body", "pivot": [0.0, 0.875, 0.4375]},
+      {"name": "tail_1", "parent": "pelvis", "pivot": [0.0, 0.9375, 0.8125]},
+      {"name": "tail_2", "parent": "tail_1", "pivot": [0.0, 0.9375, 1.4375]},
+      {"name": "tail_3", "parent": "tail_2", "pivot": [0.0, 0.9375, 2.0625]},
+      {"name": "leg_front_left", "parent": "chest", "pivot": [0.25, 0.75, -0.5625]},
+      {"name": "shin_front_left", "parent": "leg_front_left", "pivot": [0.25, 0.375, -0.5625]},
+      {"name": "foot_front_left", "parent": "shin_front_left", "pivot": [0.25, 0.0625, -0.5625]},
+      {"name": "leg_front_right", "parent": "chest", "pivot": [-0.25, 0.75, -0.5625]},
+      {"name": "shin_front_right", "parent": "leg_front_right", "pivot": [-0.25, 0.375, -0.5625]},
+      {"name": "foot_front_right", "parent": "shin_front_right", "pivot": [-0.25, 0.0625, -0.5625]},
+      {"name": "leg_back_left", "parent": "pelvis", "pivot": [0.25, 0.75, 0.5625]},
+      {"name": "shin_back_left", "parent": "leg_back_left", "pivot": [0.25, 0.375, 0.5625]},
+      {"name": "foot_back_left", "parent": "shin_back_left", "pivot": [0.25, 0.0625, 0.5625]},
+      {"name": "leg_back_right", "parent": "pelvis", "pivot": [-0.25, 0.75, 0.5625]},
+      {"name": "shin_back_right", "parent": "leg_back_right", "pivot": [-0.25, 0.375, 0.5625]},
+      {"name": "foot_back_right", "parent": "shin_back_right", "pivot": [-0.25, 0.0625, 0.5625]}
+    ],
+    "hitboxes": [
+      {
+        "id": "torso",
+        "region": "torso",
+        "damage_multiplier": 1.0,
+        "boxes": [
+          {"bone": "body", "min": [-0.375, 0.5625, -0.46875], "max": [0.375, 1.1875, 0.46875]},
+          {"bone": "chest", "min": [-0.34375, 0.625, -0.875], "max": [0.34375, 1.1875, -0.40625]},
+          {"bone": "pelvis", "min": [-0.34375, 0.625, 0.40625], "max": [0.34375, 1.1875, 0.875]}
+        ]
+      },
+      {
+        "id": "neck_1",
+        "region": "neck",
+        "damage_multiplier": 1.0,
+        "boxes": [
+          {"bone": "neck_1", "min": [-0.21875, 0.8125, -1.25], "max": [0.21875, 1.25, -0.75]}
+        ]
+      },
+      {
+        "id": "neck_2",
+        "region": "neck",
+        "damage_multiplier": 1.0,
+        "boxes": [
+          {"bone": "neck_2", "min": [-0.1875, 1.0625, -1.625], "max": [0.1875, 1.4375, -1.125]}
+        ]
+      },
+      {
+        "id": "head",
+        "region": "head",
+        "damage_multiplier": 1.0,
+        "boxes": [
+          {"bone": "head", "min": [-0.25, 1.25, -1.9375], "max": [0.25, 1.6875, -1.5]},
+          {"bone": "head", "min": [-0.21875, 1.25, -2.1875], "max": [0.21875, 1.5625, -1.8125]},
+          {"bone": "jaw", "min": [-0.1875, 1.125, -2.125], "max": [0.1875, 1.375, -1.75]}
+        ]
+      },
+      {
+        "id": "tail_near",
+        "region": "tail",
+        "damage_multiplier": 1.0,
+        "boxes": [
+          {"bone": "tail_1", "min": [-0.25, 0.75, 0.8125], "max": [0.25, 1.125, 1.5]}
+        ]
+      },
+      {
+        "id": "tail_far",
+        "region": "tail",
+        "damage_multiplier": 1.0,
+        "boxes": [
+          {"bone": "tail_2", "min": [-0.1875, 0.8125, 1.4375], "max": [0.1875, 1.0625, 2.125]},
+          {"bone": "tail_3", "min": [-0.125, 0.875, 2.0625], "max": [0.125, 1.0625, 2.8125]}
+        ]
+      },
+      {
+        "id": "leg_front_left",
+        "region": "leg",
+        "damage_multiplier": 1.0,
+        "boxes": [
+          {"bone": "leg_front_left", "min": [0.15625, 0.3125, -0.6875], "max": [0.34375, 0.8125, -0.4375]},
+          {"bone": "shin_front_left", "min": [0.1875, 0.0, -0.625], "max": [0.3125, 0.4375, -0.5]},
+          {"bone": "foot_front_left", "min": [0.15625, 0.0, -0.75], "max": [0.34375, 0.125, -0.4375]}
+        ]
+      },
+      {
+        "id": "leg_front_right",
+        "region": "leg",
+        "damage_multiplier": 1.0,
+        "boxes": [
+          {"bone": "leg_front_right", "min": [-0.34375, 0.3125, -0.6875], "max": [-0.15625, 0.8125, -0.4375]},
+          {"bone": "shin_front_right", "min": [-0.3125, 0.0, -0.625], "max": [-0.1875, 0.4375, -0.5]},
+          {"bone": "foot_front_right", "min": [-0.34375, 0.0, -0.75], "max": [-0.15625, 0.125, -0.4375]}
+        ]
+      },
+      {
+        "id": "leg_back_left",
+        "region": "leg",
+        "damage_multiplier": 1.0,
+        "boxes": [
+          {"bone": "leg_back_left", "min": [0.15625, 0.3125, 0.4375], "max": [0.34375, 0.8125, 0.6875]},
+          {"bone": "shin_back_left", "min": [0.1875, 0.0, 0.5], "max": [0.3125, 0.4375, 0.625]},
+          {"bone": "foot_back_left", "min": [0.15625, 0.0, 0.375], "max": [0.34375, 0.125, 0.6875]}
+        ]
+      },
+      {
+        "id": "leg_back_right",
+        "region": "leg",
+        "damage_multiplier": 1.0,
+        "boxes": [
+          {"bone": "leg_back_right", "min": [-0.34375, 0.3125, 0.4375], "max": [-0.15625, 0.8125, 0.6875]},
+          {"bone": "shin_back_right", "min": [-0.3125, 0.0, 0.5], "max": [-0.1875, 0.4375, 0.625]},
+          {"bone": "foot_back_right", "min": [-0.34375, 0.0, 0.375], "max": [-0.15625, 0.125, 0.6875]}
+        ]
+      }
+    ]
+  },
+  "combat": {
+    "attacks": [
+      {
+        "id": "bite",
+        "animation": "animation.prototype_dinosaur.bite",
+        "duration": 16,
+        "active_start": 7,
+        "active_end": 8,
+        "cooldown": 24,
+        "damage_multiplier": 1.0,
+        "knockback": 0.35,
+        "hit_mode": "primary_target",
+        "volumes": [
+          {
+            "bone": "head",
+            "center": [0.0, 1.375, -2.0625],
+            "half_extents": [0.3125, 0.28125, 0.375]
+          }
+        ],
+        "keyframes": [
+          {"tick": 0},
+          {
+            "tick": 3,
+            "rotations": {
+              "neck_1": [10.0, 0.0, 0.0],
+              "neck_2": [15.0, 0.0, 0.0],
+              "head": [8.0, 0.0, 0.0],
+              "jaw": [-38.0, 0.0, 0.0]
+            }
+          },
+          {
+            "tick": 6,
+            "rotations": {
+              "neck_1": [-12.0, 0.0, 0.0],
+              "neck_2": [-18.0, 0.0, 0.0],
+              "head": [-12.0, 0.0, 0.0],
+              "jaw": [-38.0, 0.0, 0.0]
+            }
+          },
+          {
+            "tick": 7,
+            "rotations": {
+              "neck_1": [-12.0, 0.0, 0.0],
+              "neck_2": [-18.0, 0.0, 0.0],
+              "head": [-12.0, 0.0, 0.0]
+            }
+          },
+          {
+            "tick": 10,
+            "rotations": {
+              "neck_1": [-3.0, 0.0, 0.0],
+              "neck_2": [-5.0, 0.0, 0.0],
+              "head": [-3.0, 0.0, 0.0]
+            }
+          },
+          {"tick": 16}
+        ]
+      }
+    ]
+  }
+}

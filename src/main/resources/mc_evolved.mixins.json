@@ -4,7 +4,9 @@
   "package": "com.wachi.mse.mixin",
   "compatibilityLevel": "JAVA_25",
   "mixins": [],
-  "client": [],
+  "client": [
+    "client.EntityHitboxDebugRendererMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

@@ -16,9 +16,10 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Transforms species-space geometry with the same additive pose used by the
+ * Transforms profile-space geometry with the same procedural pose used by the
  * renderer. Selection parts, culling and attack volumes consequently follow
- * body balance, leg IK, neck look and attack animation from one source.
+ * body balance, stance-weighted leg IK, neck look and attack animation from
+ * one source.
  */
 public final class DinosaurPoseTransforms {
     private DinosaurPoseTransforms() {
@@ -104,8 +105,9 @@ public final class DinosaurPoseTransforms {
             DinosaurCombatConfig.Attack attack,
             float attackElapsedTicks) {
         Map<String, DinosaurBoneRotation> rotations = new HashMap<>();
+        Map<String, Vec3> translations = new HashMap<>();
         rotations.put(
-                config.bones().body(),
+                config.bodyBone(),
                 new DinosaurBoneRotation(
                         pose.pitchRadians(),
                         0.0F,
@@ -126,18 +128,36 @@ public final class DinosaurPoseTransforms {
 
         for (DinosaurLegPose legPose : pose.legs()) {
             DinosaurLegRig rig = config.leg(legPose.legId());
-            addRotation(rotations, rig.upperBone(), legPose.hipRotation());
-            addRotation(rotations, rig.lowerBone(), legPose.kneeRotation());
+            float ikWeight = legPose.forcedMaximumExtension()
+                    ? 1.0F
+                    : pose.gait().supportWeight(legPose.legId());
+            addRotation(
+                    rotations,
+                    rig.upperBone(),
+                    new DinosaurBoneRotation(
+                            legPose.hipRotation().xRadians() * ikWeight
+                                    - pose.balancePitchRadians(),
+                            legPose.hipRotation().yRadians() * ikWeight,
+                            legPose.hipRotation().zRadians() * ikWeight
+                                    - pose.balanceRollRadians()));
+            translations.put(
+                    rig.upperBone(),
+                    legRootCompensation(config, rig, pose));
+            addRotation(
+                    rotations,
+                    rig.lowerBone(),
+                    scaledRotation(legPose.kneeRotation(), ikWeight));
             DinosaurBoneRotation foot = legPose.footRotation();
             addRotation(
                     rotations,
                     rig.footBone(),
-                    new DinosaurBoneRotation(
+                    scaledRotation(new DinosaurBoneRotation(
                             foot.xRadians()
                                     + legPose.footTerrainPitchRadians(),
                             foot.yRadians(),
                             foot.zRadians()
-                                    + legPose.footTerrainRollRadians()));
+                                    + legPose.footTerrainRollRadians()),
+                            ikWeight));
         }
 
         if (attack != null) {
@@ -155,6 +175,7 @@ public final class DinosaurPoseTransforms {
                 config,
                 pose,
                 Map.copyOf(rotations),
+                Map.copyOf(translations),
                 Map.copyOf(bonesByName));
     }
 
@@ -183,7 +204,7 @@ public final class DinosaurPoseTransforms {
             PoseSnapshot snapshot,
             String boneName,
             Vec3 modelPoint) {
-        double scale = snapshot.config().modelScale();
+        double scale = snapshot.config().scale();
         Vec3 point = renderCoordinates(modelPoint, scale);
         String currentBone = boneName;
         while (currentBone != null) {
@@ -199,6 +220,8 @@ public final class DinosaurPoseTransforms {
                 Vec3 pivot = renderCoordinates(bone.pivot(), scale);
                 point = rotateAround(point, pivot, rotation);
             }
+            point = point.add(snapshot.translations()
+                    .getOrDefault(currentBone, Vec3.ZERO));
             currentBone = bone.parent();
         }
 
@@ -259,6 +282,31 @@ public final class DinosaurPoseTransforms {
                 point.z);
     }
 
+    private static Vec3 legRootCompensation(
+            DinosaurProceduralConfig config,
+            DinosaurLegRig rig,
+            DinosaurProceduralPose pose) {
+        if (Math.abs(pose.balancePitchRadians()) < 1.0E-6F
+                && Math.abs(pose.balanceRollRadians()) < 1.0E-6F) {
+            return Vec3.ZERO;
+        }
+        Vec3 hipFromBodyPivot = new Vec3(
+                rig.renderedModelXOffset(),
+                rig.hipHeight() - config.bodyPivotHeight(),
+                rig.modelZOffset());
+        Vec3 structurallyTilted = rotateZ(
+                rotateX(
+                        hipFromBodyPivot,
+                        pose.structuralPitchRadians()),
+                pose.structuralRollRadians());
+        Vec3 totalLocal = rotateX(
+                rotateZ(
+                        structurallyTilted,
+                        -pose.rollRadians()),
+                -pose.pitchRadians());
+        return totalLocal.subtract(hipFromBodyPivot);
+    }
+
     private static void addRotation(
             Map<String, DinosaurBoneRotation> rotations,
             String bone,
@@ -274,10 +322,20 @@ public final class DinosaurPoseTransforms {
                         current.zRadians() + addition.zRadians()));
     }
 
+    private static DinosaurBoneRotation scaledRotation(
+            DinosaurBoneRotation rotation,
+            float weight) {
+        return new DinosaurBoneRotation(
+                rotation.xRadians() * weight,
+                rotation.yRadians() * weight,
+                rotation.zRadians() * weight);
+    }
+
     public record PoseSnapshot(
             DinosaurProceduralConfig config,
             DinosaurProceduralPose pose,
             Map<String, DinosaurBoneRotation> rotations,
+            Map<String, Vec3> translations,
             Map<String, DinosaurSkeletonConfig.Bone> bonesByName) {
     }
 }

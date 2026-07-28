@@ -185,8 +185,8 @@ public final class DinosaurTerrainSampler {
                     position.y - origin.y,
                     valid,
                     supportWeight,
-                    footTilt.pitchRadians() * supportWeight,
-                    footTilt.rollRadians() * supportWeight);
+                    footTilt.pitchRadians(),
+                    footTilt.rollRadians());
             samples.add(sample);
         }
 
@@ -205,7 +205,6 @@ public final class DinosaurTerrainSampler {
         List<DinosaurLegPose> levelLegs = DinosaurLegIkSolver.solve(
                 config,
                 samples,
-                gait,
                 levelBodyTranslationY,
                 0.0F,
                 0.0F);
@@ -221,10 +220,11 @@ public final class DinosaurTerrainSampler {
         List<DinosaurLegPose> legs = DinosaurLegIkSolver.solve(
                 config,
                 samples,
-                gait,
                 bodyTranslationY,
                 bodyPitch,
                 bodyRoll);
+        float balancePitch = 0.0F;
+        float balanceRoll = 0.0F;
         DinosaurStabilityAssessment stability = DinosaurStabilitySolver.assess(
                 config,
                 origin,
@@ -251,41 +251,63 @@ public final class DinosaurTerrainSampler {
                         config,
                         stability,
                         bodyYawDegrees);
-                bodyPitch = Mth.clamp(
+                boolean terrainSupportLost =
+                        samples.stream().anyMatch(sample -> !sample.valid())
+                                || legs.stream().anyMatch(
+                                        leg -> !leg.reachable());
+                boolean locomotionBalance =
+                        gait.activity()
+                                        > config.stability()
+                                                .maximumActivityForStaticBalance()
+                                && !terrainSupportLost;
+                float recoveredPitch = Mth.clamp(
                         bodyPitch + recoveryLean.pitchRadians(),
                         -config.maxHybridPitchRadians(),
                         config.maxHybridPitchRadians());
-                bodyRoll = Mth.clamp(
+                float recoveredRoll = Mth.clamp(
                         bodyRoll + recoveryLean.rollRadians(),
                         -config.maxHybridRollRadians(),
                         config.maxHybridRollRadians());
-                bodyTranslationY = hasRealSupport
-                        ? DinosaurLegIkSolver.calculateBodyTranslationY(
-                                config,
-                                samples,
-                                bodyPitch,
-                                bodyRoll)
-                        : 0.0F;
-                legs = DinosaurLegIkSolver.solve(
-                        config,
-                        samples,
-                        gait,
-                        bodyTranslationY,
-                        bodyPitch,
-                        bodyRoll);
-                stability = DinosaurStabilitySolver.assess(
-                        config,
-                        origin,
-                        bodyYawDegrees,
-                        samples,
-                        legs,
-                        footprintSupport);
-                legs = extendTerrainLostLegsForRecovery(
-                        config,
-                        legs,
-                        bodyTranslationY,
-                        bodyPitch,
-                        bodyRoll);
+                if (locomotionBalance) {
+                    // A gait can intentionally leave only one side in stance.
+                    // Keep that natural torso weight shift, but do not feed it
+                    // back into the structural leg solve: otherwise all hips
+                    // rotate towards the centre of mass and the descending
+                    // feet are pulled diagonally off their authored path.
+                    balancePitch = recoveredPitch - bodyPitch;
+                    balanceRoll = recoveredRoll - bodyRoll;
+                    bodyPitch = recoveredPitch;
+                    bodyRoll = recoveredRoll;
+                } else {
+                    bodyPitch = recoveredPitch;
+                    bodyRoll = recoveredRoll;
+                    bodyTranslationY = hasRealSupport
+                            ? DinosaurLegIkSolver.calculateBodyTranslationY(
+                                    config,
+                                    samples,
+                                    bodyPitch,
+                                    bodyRoll)
+                            : 0.0F;
+                    legs = DinosaurLegIkSolver.solve(
+                            config,
+                            samples,
+                            bodyTranslationY,
+                            bodyPitch,
+                            bodyRoll);
+                    stability = DinosaurStabilitySolver.assess(
+                            config,
+                            origin,
+                            bodyYawDegrees,
+                            samples,
+                            legs,
+                            footprintSupport);
+                    legs = extendTerrainLostLegsForRecovery(
+                            config,
+                            legs,
+                            bodyTranslationY,
+                            bodyPitch,
+                            bodyRoll);
+                }
             }
         }
 
@@ -299,6 +321,10 @@ public final class DinosaurTerrainSampler {
                 bodyPitch,
                 bodyRoll,
                 bodyTranslationY,
+                balancePitch,
+                balanceRoll,
+                balancePitch,
+                balanceRoll,
                 terrainPitch,
                 terrainRoll,
                 slope.pitchResolved(),

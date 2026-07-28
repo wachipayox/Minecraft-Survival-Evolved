@@ -7,6 +7,7 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.level.pathfinder.Node;
 import net.minecraft.world.level.pathfinder.NodeEvaluator;
 import net.minecraft.world.level.pathfinder.PathFinder;
+import java.util.function.Supplier;
 
 /**
  * A* cost model that favors paths a non-pivoting animal can follow.
@@ -20,13 +21,13 @@ final class DinosaurPathFinder extends PathFinder {
     private static final double VECTOR_EPSILON = 1.0E-8;
 
     private final Mob mob;
-    private final DinosaurOrientationConfig orientation;
+    private final Supplier<DinosaurOrientationConfig> orientation;
 
     DinosaurPathFinder(
             NodeEvaluator nodeEvaluator,
             int maxVisitedNodes,
             Mob mob,
-            DinosaurOrientationConfig orientation) {
+            Supplier<DinosaurOrientationConfig> orientation) {
         super(nodeEvaluator, maxVisitedNodes);
         this.mob = mob;
         this.orientation = orientation;
@@ -66,7 +67,7 @@ final class DinosaurPathFinder extends PathFinder {
         double nominalSpeed =
                 this.mob.getAttributeValue(Attributes.MOVEMENT_SPEED);
         double turnRadius =
-                this.orientation.turningRadiusBlocks(nominalSpeed);
+                this.orientation.get().turningRadiusBlocks(nominalSpeed);
         return traversalCost + (float) (turnRadius * turnRadians);
     }
 }

@@ -192,10 +192,515 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
 }
 
+// A normal Gradle run places resources under build/resources/main. Minecraft's
+// /reload would otherwise keep reading that snapshot while a profile is edited
+// under src/main/resources. Development runs replace only the dinosaur profile
+// copies with hard links, so JSON edits become visible to /reload immediately.
+def dinosaurProfileNamespace = mod_id
+def sourceDinosaurProfilesDirectory = layout.projectDirectory.dir(
+        "src/main/resources/data/${dinosaurProfileNamespace}/${dinosaurProfileNamespace}/dinosaur_profiles"
+).asFile
+def runtimeDinosaurProfilesDirectory = layout.buildDirectory.dir(
+        "resources/main/data/${dinosaurProfileNamespace}/${dinosaurProfileNamespace}/dinosaur_profiles"
+).get().asFile
+
+// Unlink the development views before Gradle copies changed inputs. Copying
+// onto an existing hard link would otherwise overwrite the source inode too.
+tasks.named('processResources').configure {
+    doFirst {
+        if (runtimeDinosaurProfilesDirectory.isDirectory()) {
+            runtimeDinosaurProfilesDirectory.eachFileRecurse { runtimeFile ->
+                if (runtimeFile.isFile() && runtimeFile.name.endsWith('.json')) {
+                    java.nio.file.Files.deleteIfExists(runtimeFile.toPath())
+                }
+            }
+        }
+    }
+}
+
+def linkLiveDinosaurProfiles = tasks.register('linkLiveDinosaurProfiles') {
+    group = 'minecraft survival evolved'
+    description = 'Link source dinosaur profiles into the development runtime resources'
+    dependsOn tasks.named('processResources')
+
+    doLast {
+        if (!sourceDinosaurProfilesDirectory.isDirectory()) {
+            return
+        }
+        runtimeDinosaurProfilesDirectory.mkdirs()
+        sourceDinosaurProfilesDirectory.eachFileRecurse { sourceFile ->
+            if (sourceFile.isFile() && sourceFile.name.endsWith('.json')) {
+                def relative = sourceDinosaurProfilesDirectory.toPath()
+                        .relativize(sourceFile.toPath())
+                def runtimeFile = runtimeDinosaurProfilesDirectory.toPath()
+                        .resolve(relative)
+                java.nio.file.Files.createDirectories(runtimeFile.parent)
+                java.nio.file.Files.deleteIfExists(runtimeFile)
+                java.nio.file.Files.createLink(
+                        runtimeFile,
+                        sourceFile.toPath().toAbsolutePath())
+            }
+        }
+    }
+}
+
+tasks.matching {
+    it.name in ['runClient', 'runServer', 'runGameTestServer']
+}.configureEach {
+    dependsOn linkLiveDinosaurProfiles
+}
+
 // IDEA no longer automatically downloads sources/javadoc jars for dependencies, so we need to explicitly enable the behavior.
 idea {
     module {
         downloadSources = true
         downloadJavadoc = true
+    }
+}
+
+// Development helper: turns GeckoLib/Bedrock bones and cubes into the
+// datapack skeleton section used by procedural dinosaurs. It never overwrites
+// source files; the generated snippet is written below build/.
+tasks.register('generateDinosaurAnatomy') {
+    group = 'minecraft survival evolved'
+    description = 'Generate a dinosaur skeleton/hitbox JSON snippet from a GeckoLib geo.json'
+    notCompatibleWithConfigurationCache('Development-only geometry converter')
+
+    doLast {
+        def requestedModel = providers.gradleProperty('dinosaurModel')
+                .getOrElse('prototype_dinosaur')
+        def modelFile = file(
+                "src/main/resources/assets/${mod_id}/geckolib/models/entity/${requestedModel}.geo.json")
+        if (!modelFile.isFile()) {
+            throw new GradleException(
+                    "GeckoLib model not found: ${modelFile}. "
+                            + "Use -PdinosaurModel=<asset path without .geo.json>")
+        }
+
+        def parsed = new groovy.json.JsonSlurper().parse(modelFile)
+        def geometry = parsed['minecraft:geometry']?.getAt(0)
+        if (geometry == null || !(geometry.bones instanceof List)) {
+            throw new GradleException("The model has no Bedrock minecraft:geometry[0].bones")
+        }
+
+        def groups = new LinkedHashMap<String, Map>()
+        def classify = { String boneName ->
+            def legMatch = boneName =~ /^(?:leg|shin|foot)_(.+)$/
+            if (legMatch.matches()) {
+                return [id: "leg_${legMatch.group(1)}", region: 'leg']
+            }
+            if (boneName in ['body', 'chest', 'pelvis']) {
+                return [id: 'torso', region: 'torso']
+            }
+            if (boneName == 'head' || boneName == 'jaw') {
+                return [id: 'head', region: 'head']
+            }
+            if (boneName == 'tail_1') {
+                return [id: 'tail_near', region: 'tail']
+            }
+            if (boneName.startsWith('tail_')) {
+                return [id: 'tail_far', region: 'tail']
+            }
+            if (boneName.startsWith('neck')) {
+                return [id: boneName, region: 'neck']
+            }
+            return [id: boneName, region: 'torso']
+        }
+        def blocks = { List values ->
+            values.collect { ((Number) it).doubleValue() / 16.0D }
+        }
+
+        def bones = geometry.bones.collect { bone ->
+            def result = [
+                    name : bone.name,
+                    pivot: blocks((bone.pivot ?: [0, 0, 0]) as List)
+            ]
+            if (bone.parent != null) {
+                result.parent = bone.parent
+            }
+            (bone.cubes ?: []).each { cube ->
+                def groupInfo = classify(bone.name as String)
+                def group = groups.computeIfAbsent(groupInfo.id) {
+                    [id: groupInfo.id, region: groupInfo.region, boxes: []]
+                }
+                def origin = cube.origin as List
+                def size = cube.size as List
+                def maximum = (0..<3).collect {
+                    ((Number) origin[it]).doubleValue()
+                            + ((Number) size[it]).doubleValue()
+                }
+                group.boxes << [
+                        bone: bone.name,
+                        min : blocks(origin),
+                        max : blocks(maximum)
+                ]
+            }
+            result
+        }
+
+        def output = file(
+                "${layout.buildDirectory.get()}/generated/mse-anatomy/${requestedModel}.skeleton.json")
+        output.parentFile.mkdirs()
+        output.text = groovy.json.JsonOutput.prettyPrint(
+                groovy.json.JsonOutput.toJson([
+                        skeleton: [
+                                bones   : bones,
+                                hitboxes: groups.values().findAll {
+                                    !it.boxes.isEmpty()
+                                }
+                        ]
+                ]))
+        logger.lifecycle("Generated dinosaur anatomy: ${output}")
+    }
+}
+
+// Samples a GeckoLib walk clip and proposes the contact timing consumed by
+// the per-leg animation/IK interpolator. The task is deliberately read-only:
+// inferred timings are written below build/ for review instead of silently
+// changing a species profile.
+tasks.register('generateDinosaurGaitContacts') {
+    group = 'minecraft survival evolved'
+    description = 'Infer per-leg lift-off, apex and plant phases from a GeckoLib walk animation'
+    notCompatibleWithConfigurationCache('Development-only animation analyser')
+
+    doLast {
+        def requestedModel = providers.gradleProperty('dinosaurModel')
+                .getOrElse('prototype_dinosaur')
+        def requestedAnimation = providers.gradleProperty('walkAnimation')
+                .getOrElse('')
+        int sampleCount = providers.gradleProperty('gaitSamples')
+                .map { it as int }
+                .getOrElse(240)
+        double thresholdFraction = providers.gradleProperty('contactThreshold')
+                .map { it as double }
+                .getOrElse(0.12D)
+        if (sampleCount < 32 || thresholdFraction <= 0.0D
+                || thresholdFraction >= 0.5D) {
+            throw new GradleException(
+                    'Use gaitSamples >= 32 and contactThreshold in (0, 0.5)')
+        }
+
+        def profileFile = file(
+                "src/main/resources/data/${mod_id}/${mod_id}/dinosaur_profiles/${requestedModel}.json")
+        def modelFile = file(
+                "src/main/resources/assets/${mod_id}/geckolib/models/entity/${requestedModel}.geo.json")
+        def animationFile = file(
+                "src/main/resources/assets/${mod_id}/geckolib/animations/entity/${requestedModel}.animation.json")
+        [profileFile, modelFile, animationFile].each { sourceFile ->
+            if (!sourceFile.isFile()) {
+                throw new GradleException("Required dinosaur source not found: ${sourceFile}")
+            }
+        }
+
+        def json = new groovy.json.JsonSlurper()
+        def profile = json.parse(profileFile)
+        def modelJson = json.parse(modelFile)
+        def animationJson = json.parse(animationFile)
+        def geometry = modelJson['minecraft:geometry']?.getAt(0)
+        if (!(profile.legs instanceof List)
+                || profile.legs.isEmpty()
+                || !(geometry?.bones instanceof List)) {
+            throw new GradleException(
+                    'The profile needs legs and the model needs minecraft:geometry[0].bones')
+        }
+
+        def animations = animationJson.animations
+        if (!(animations instanceof Map) || animations.isEmpty()) {
+            throw new GradleException("No animations found in ${animationFile}")
+        }
+        def conventionalName =
+                "animation.${requestedModel.replace('/', '.')}.walk"
+        def animationName = requestedAnimation ?: (
+                animations.containsKey(conventionalName)
+                        ? conventionalName
+                        : animations.keySet().find { it.endsWith('.walk') })
+        def walk = animationName == null ? null : animations[animationName]
+        if (!(walk instanceof Map)) {
+            throw new GradleException(
+                    "Walk animation not found. Use -PwalkAnimation=<full animation id>")
+        }
+        double animationLength = (walk.animation_length ?: 0.0D) as double
+        if (animationLength <= 0.0D) {
+            throw new GradleException('The walk animation needs animation_length > 0')
+        }
+        def animatedBones = walk.bones instanceof Map ? walk.bones : [:]
+        def bones = geometry.bones.collectEntries { [(it.name as String): it] }
+
+        def vector = { value, fallback ->
+            def raw = value
+            if (raw instanceof Map) {
+                raw = raw.vector ?: raw.post ?: raw.pre
+            }
+            if (!(raw instanceof List) || raw.size() < 3) {
+                return fallback
+            }
+            raw.take(3).collect { component ->
+                if (!(component instanceof Number)) {
+                    throw new GradleException(
+                            'Molang expressions are not supported by gait contact inference')
+                }
+                (component as Number).doubleValue()
+            }
+        }
+        def sampleChannel
+        sampleChannel = { channel, time, fallback ->
+            if (channel == null) {
+                return fallback
+            }
+            if (channel instanceof List) {
+                return vector(channel, fallback)
+            }
+            if (!(channel instanceof Map)) {
+                return fallback
+            }
+            def keys = channel.keySet().collect { key ->
+                try {
+                    return [time: Double.parseDouble(key as String), key: key]
+                } catch (NumberFormatException ignored) {
+                    return null
+                }
+            }.findAll { it != null }.sort { it.time }
+            if (keys.isEmpty()) {
+                return vector(channel, fallback)
+            }
+            if (time <= keys.first().time) {
+                return vector(channel[keys.first().key], fallback)
+            }
+            if (time >= keys.last().time) {
+                return vector(channel[keys.last().key], fallback)
+            }
+            def rightIndex = keys.findIndexOf { it.time >= time }
+            def left = keys[rightIndex - 1]
+            def right = keys[rightIndex]
+            def from = vector(channel[left.key], fallback)
+            def to = vector(channel[right.key], from)
+            double alpha = (time - left.time) / (right.time - left.time)
+            (0..<3).collect { axis ->
+                from[axis] + (to[axis] - from[axis]) * alpha
+            }
+        }
+
+        def identity = {
+            [
+                    [1D, 0D, 0D, 0D],
+                    [0D, 1D, 0D, 0D],
+                    [0D, 0D, 1D, 0D],
+                    [0D, 0D, 0D, 1D]
+            ]
+        }
+        def multiply = { left, right ->
+            (0..<4).collect { row ->
+                (0..<4).collect { column ->
+                    (0..<4).sum { index ->
+                        left[row][index] * right[index][column]
+                    } as double
+                }
+            }
+        }
+        def translation = { x, y, z ->
+            def result = identity()
+            result[0][3] = x
+            result[1][3] = y
+            result[2][3] = z
+            result
+        }
+        def rotation = { degrees ->
+            double x = Math.toRadians(degrees[0])
+            double y = Math.toRadians(degrees[1])
+            double z = Math.toRadians(degrees[2])
+            def rx = [
+                    [1D, 0D, 0D, 0D],
+                    [0D, Math.cos(x), -Math.sin(x), 0D],
+                    [0D, Math.sin(x), Math.cos(x), 0D],
+                    [0D, 0D, 0D, 1D]
+            ]
+            def ry = [
+                    [Math.cos(y), 0D, Math.sin(y), 0D],
+                    [0D, 1D, 0D, 0D],
+                    [-Math.sin(y), 0D, Math.cos(y), 0D],
+                    [0D, 0D, 0D, 1D]
+            ]
+            def rz = [
+                    [Math.cos(z), -Math.sin(z), 0D, 0D],
+                    [Math.sin(z), Math.cos(z), 0D, 0D],
+                    [0D, 0D, 1D, 0D],
+                    [0D, 0D, 0D, 1D]
+            ]
+            multiply(rz, multiply(ry, rx))
+        }
+        def transformPoint = { matrix, point ->
+            (0..<3).collect { row ->
+                matrix[row][0] * point[0]
+                        + matrix[row][1] * point[1]
+                        + matrix[row][2] * point[2]
+                        + matrix[row][3]
+            }
+        }
+
+        def footHeightAt = { leg, time ->
+            def matrices = [:]
+            def boneMatrix
+            boneMatrix = { String boneName ->
+                if (matrices.containsKey(boneName)) {
+                    return matrices[boneName]
+                }
+                def bone = bones[boneName]
+                if (bone == null) {
+                    throw new GradleException(
+                            "Profile leg references missing model bone ${boneName}")
+                }
+                def parentMatrix = bone.parent == null
+                        ? identity()
+                        : boneMatrix(bone.parent as String)
+                def pivot = vector(bone.pivot, [0D, 0D, 0D])
+                def baseRotation = vector(bone.rotation, [0D, 0D, 0D])
+                def animationBone = animatedBones[boneName] instanceof Map
+                        ? animatedBones[boneName]
+                        : [:]
+                def position = sampleChannel(
+                        animationBone.position,
+                        time,
+                        [0D, 0D, 0D])
+                def animatedRotation = sampleChannel(
+                        animationBone.rotation,
+                        time,
+                        [0D, 0D, 0D])
+                def combinedRotation = (0..<3).collect { axis ->
+                    baseRotation[axis] + animatedRotation[axis]
+                }
+                def local = multiply(
+                        translation(position[0], position[1], position[2]),
+                        multiply(
+                                translation(pivot[0], pivot[1], pivot[2]),
+                                multiply(
+                                        rotation(combinedRotation),
+                                        translation(
+                                                -pivot[0],
+                                                -pivot[1],
+                                                -pivot[2]))))
+                matrices[boneName] = multiply(parentMatrix, local)
+                matrices[boneName]
+            }
+
+            def foot = bones[leg.foot as String]
+            def footMatrix = boneMatrix(leg.foot as String)
+            def points = []
+            (foot.cubes ?: []).each { cube ->
+                def origin = vector(cube.origin, [0D, 0D, 0D])
+                def size = vector(cube.size, [0D, 0D, 0D])
+                [0D, 1D].each { x ->
+                    [0D, 1D].each { y ->
+                        [0D, 1D].each { z ->
+                            points << [
+                                    origin[0] + size[0] * x,
+                                    origin[1] + size[1] * y,
+                                    origin[2] + size[2] * z
+                            ]
+                        }
+                    }
+                }
+            }
+            if (points.isEmpty()) {
+                points << vector(foot.pivot, [0D, 0D, 0D])
+            }
+            points.collect { point ->
+                transformPoint(footMatrix, point)[1]
+            }.min() as double
+        }
+
+        def roundPhase = { value ->
+            BigDecimal.valueOf(value - Math.floor(value))
+                    .setScale(6, java.math.RoundingMode.HALF_UP)
+                    .doubleValue()
+        }
+        def contacts = profile.legs.collect { leg ->
+            def heights = (0..<sampleCount).collect { sample ->
+                footHeightAt(
+                        leg,
+                        animationLength * sample / sampleCount)
+            }
+            double minimum = heights.min() as double
+            double maximum = heights.max() as double
+            double range = maximum - minimum
+            if (range < 1.0E-4D) {
+                return [
+                        id        : leg.id,
+                        reliable  : false,
+                        warning   : 'No detectable vertical foot motion',
+                        min_height: minimum,
+                        max_height: maximum
+                ]
+            }
+            double threshold = minimum + range * thresholdFraction
+            def airborne = heights.collect { it > threshold }
+            def starts = (0..<sampleCount).findAll { index ->
+                airborne[index]
+                        && !airborne[(index - 1 + sampleCount) % sampleCount]
+            }
+            def candidates = starts.collect { start ->
+                int length = 0
+                double score = 0.0D
+                while (length < sampleCount
+                        && airborne[(start + length) % sampleCount]) {
+                    score += heights[(start + length) % sampleCount] - threshold
+                    length++
+                }
+                [start: start, length: length, score: score]
+            }.findAll { it.length > 0 && it.length < sampleCount }
+            if (candidates.isEmpty()) {
+                return [
+                        id        : leg.id,
+                        reliable  : false,
+                        warning   : 'Could not isolate a circular airborne interval',
+                        min_height: minimum,
+                        max_height: maximum
+                ]
+            }
+            def interval = candidates.max { it.score }
+            int start = interval.start as int
+            int last = (start + (interval.length as int) - 1) % sampleCount
+            int before = (start - 1 + sampleCount) % sampleCount
+            int after = (last + 1) % sampleCount
+            double liftAlpha = (threshold - heights[before]) / (
+                    heights[start] - heights[before])
+            double plantAlpha = (threshold - heights[last]) / (
+                    heights[after] - heights[last])
+            double liftPhase = (before + liftAlpha) / sampleCount
+            double plantPhase = (last + plantAlpha) / sampleCount
+            def airborneIndices = (0..<(interval.length as int)).collect {
+                (start + it) % sampleCount
+            }
+            int apexIndex = airborneIndices.max {
+                heights[it]
+            } as int
+            [
+                    id        : leg.id,
+                    contact   : [
+                            lift_off: roundPhase(liftPhase),
+                            apex    : roundPhase(apexIndex / (double) sampleCount),
+                            plant   : roundPhase(plantPhase)
+                    ],
+                    diagnostics: [
+                            reliable        : true,
+                            min_height      : minimum,
+                            max_height      : maximum,
+                            threshold_height: threshold,
+                            airborne_samples: interval.length
+                    ]
+            ]
+        }
+
+        def output = file(
+                "${layout.buildDirectory.get()}/generated/mse-gait/${requestedModel}.contacts.json")
+        output.parentFile.mkdirs()
+        output.text = groovy.json.JsonOutput.prettyPrint(
+                groovy.json.JsonOutput.toJson([
+                        animation       : animationName,
+                        animation_length: animationLength,
+                        sample_count    : sampleCount,
+                        threshold       : thresholdFraction,
+                        legs            : contacts
+                ]))
+        logger.lifecycle("Generated dinosaur gait contacts: ${output}")
     }
 }

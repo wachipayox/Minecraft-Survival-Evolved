@@ -1,7 +1,9 @@
 package com.wachi.mse.entity.dinosaur.procedural;
 
 /**
- * Two-bone IK result for one leg. Rotations are additive GeckoLib XYZ values.
+ * Two-bone IK result for one leg. During stance these rotations replace the
+ * authored clip through a continuous blend; during swing the clip remains in
+ * full control.
  */
 public record DinosaurLegPose(
         String legId,

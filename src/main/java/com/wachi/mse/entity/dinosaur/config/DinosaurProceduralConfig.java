@@ -5,7 +5,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public record DinosaurProceduralConfig(
-        DinosaurBoneNames bones,
+        String bodyBone,
         List<DinosaurLegRig> legs,
         GaitConfig gait,
         DinosaurStabilityConfig stability,
@@ -13,14 +13,13 @@ public record DinosaurProceduralConfig(
         DinosaurSkeletonConfig skeleton,
         DinosaurCombatConfig combat,
         DinosaurNavigationConfig navigation,
-        float modelScale,
+        float scale,
         double bodyPivotHeight,
         double footContactHeight,
         double contactPatchRadius,
         double sampleAbove,
         double sampleBelow,
         double maxBodyVerticalCorrection,
-        double swingFootLift,
         float minLegReachFraction,
         float maxLegReachFraction,
         float maxPitchRadians,
@@ -33,148 +32,27 @@ public record DinosaurProceduralConfig(
         float maxFootPitchRadians,
         float maxFootRollRadians,
         float smoothingResponsePerSecond) {
-    public static final DinosaurProceduralConfig PROTOTYPE = new DinosaurProceduralConfig(
-            new DinosaurBoneNames("body"),
-            List.of(
-                    new DinosaurLegRig(
-                            "front_left",
-                            "FL",
-                            "leg_front_left",
-                            "shin_front_left",
-                            "foot_front_left",
-                            4.0 / 16.0,
-                            -9.0 / 16.0,
-                            12.0 / 16.0,
-                            6.0 / 16.0,
-                            1.0 / 16.0,
-                            1.5 / 16.0,
-                            2.5 / 16.0,
-                            1.0F,
-                            0.0F),
-                    new DinosaurLegRig(
-                            "front_right",
-                            "FR",
-                            "leg_front_right",
-                            "shin_front_right",
-                            "foot_front_right",
-                            -4.0 / 16.0,
-                            -9.0 / 16.0,
-                            12.0 / 16.0,
-                            6.0 / 16.0,
-                            1.0 / 16.0,
-                            1.5 / 16.0,
-                            2.5 / 16.0,
-                            1.0F,
-                            0.5F),
-                    new DinosaurLegRig(
-                            "back_left",
-                            "BL",
-                            "leg_back_left",
-                            "shin_back_left",
-                            "foot_back_left",
-                            4.0 / 16.0,
-                            9.0 / 16.0,
-                            12.0 / 16.0,
-                            6.0 / 16.0,
-                            1.0 / 16.0,
-                            1.5 / 16.0,
-                            2.5 / 16.0,
-                            -1.0F,
-                            0.75F),
-                    new DinosaurLegRig(
-                            "back_right",
-                            "BR",
-                            "leg_back_right",
-                            "shin_back_right",
-                            "foot_back_right",
-                            -4.0 / 16.0,
-                            9.0 / 16.0,
-                            12.0 / 16.0,
-                            6.0 / 16.0,
-                            1.0 / 16.0,
-                            1.5 / 16.0,
-                            2.5 / 16.0,
-                            -1.0F,
-                            0.25F)),
-            new GaitConfig(12.8F, 0.6F, 0.12F, 0.04F),
-            new DinosaurStabilityConfig(
-                    0.0,
-                    0.0,
-                    2.0 / 16.0,
-                    1.0,
-                    1.0 / 16.0,
-                    8,
-                    0.02F,
-                    0.008,
-                    0.075,
-                    16),
-            new DinosaurOrientationConfig(
-                    List.of(
-                            new DinosaurLookBone("neck_1", 0.25F, 0.20F),
-                            new DinosaurLookBone("neck_2", 0.35F, 0.35F),
-                            new DinosaurLookBone("head", 0.40F, 0.45F)),
-                    60.0F,
-                    50.0F,
-                    35.0F,
-                    25.0F,
-                    30.0F,
-                    5.0F,
-                    4.0F,
-                    3.0F,
-                    3.0F,
-                    30.0F,
-                    0.001,
-                    0.35,
-                    0.8,
-                    4.0,
-                    12.0F),
-            DinosaurSkeletonConfig.PROTOTYPE,
-            DinosaurCombatConfig.PROTOTYPE,
-            DinosaurNavigationConfig.PROTOTYPE,
-            1.0F,
-            14.0 / 16.0,
-            0.0,
-            2.0 / 16.0,
-            1.25,
-            0.75,
-            0.75,
-            2.5 / 16.0,
-            0.35F,
-            0.985F,
-            (float) Math.toRadians(35.0),
-            (float) Math.toRadians(15.0),
-            (float) Math.toRadians(0.5),
-            0.60F,
-            0.35F,
-            (float) Math.toRadians(10.0),
-            (float) Math.toRadians(7.0),
-            (float) Math.toRadians(25.0),
-            (float) Math.toRadians(25.0),
-            9.0F);
-    public static final DinosaurProceduralConfig GIANT_PROTOTYPE =
-            PROTOTYPE.scaled(10.0F);
-
     public DinosaurProceduralConfig {
         legs = List.copyOf(legs);
         Set<String> legIds =
                 legs.stream().map(DinosaurLegRig::id).collect(Collectors.toSet());
-        if (bones == null
+        if (bodyBone == null
+                || bodyBone.isBlank()
                 || gait == null
                 || stability == null
                 || orientation == null
                 || skeleton == null
                 || combat == null
                 || navigation == null
-                || !Float.isFinite(modelScale)
-                || modelScale <= 0.0F
+                || !Float.isFinite(scale)
+                || scale <= 0.0F
                 || legs.size() < 2
                 || legIds.size() != legs.size()
                 || bodyPivotHeight <= footContactHeight
                 || contactPatchRadius < 0.0
                 || sampleAbove < 0.0
                 || sampleBelow < 0.0
-                || maxBodyVerticalCorrection < 0.0
-                || swingFootLift < 0.0) {
+                || maxBodyVerticalCorrection < 0.0) {
             throw new IllegalArgumentException("Procedural terrain geometry values are invalid");
         }
         if (!Float.isFinite(minLegReachFraction)
@@ -231,7 +109,9 @@ public record DinosaurProceduralConfig(
                         leg.footHalfWidth() * scale,
                         leg.footHalfLength() * scale,
                         leg.kneeBendDirection(),
-                        leg.swingPhase()))
+                        leg.liftOffPhase(),
+                        leg.apexPhase(),
+                        leg.plantPhase()))
                 .toList();
         DinosaurStabilityConfig scaledStability =
                 new DinosaurStabilityConfig(
@@ -264,22 +144,21 @@ public record DinosaurProceduralConfig(
                         this.orientation.maximumPathLookAheadBlocks() * scale,
                         this.orientation.visualSmoothingResponsePerSecond());
         return new DinosaurProceduralConfig(
-                this.bones,
+                this.bodyBone,
                 scaledLegs,
-                this.gait,
+                this.gait.scaled(scale),
                 scaledStability,
                 scaledOrientation,
                 this.skeleton,
                 this.combat,
                 this.navigation,
-                this.modelScale * scale,
+                this.scale * scale,
                 this.bodyPivotHeight * scale,
                 this.footContactHeight * scale,
                 this.contactPatchRadius * scale,
                 this.sampleAbove * scale,
                 this.sampleBelow * scale,
                 this.maxBodyVerticalCorrection * scale,
-                this.swingFootLift * scale,
                 this.minLegReachFraction,
                 this.maxLegReachFraction,
                 this.maxPitchRadians,
@@ -304,18 +183,38 @@ public record DinosaurProceduralConfig(
     }
 
     public record GaitConfig(
-            float walkAnimationUnitsPerCycle,
+            float strideLengthBlocks,
+            float walkAnimationLengthSeconds,
             float fullActivitySpeed,
-            float fullyLiftedFraction,
-            float supportBlendFraction) {
+            float contactBlendFraction,
+            float defaultAirborneFraction,
+            int movementBlendTicks) {
         public GaitConfig {
-            if (walkAnimationUnitsPerCycle <= 0.0F
+            if (strideLengthBlocks <= 0.0F
+                    || walkAnimationLengthSeconds <= 0.0F
                     || fullActivitySpeed <= 0.0F
-                    || fullyLiftedFraction < 0.0F
-                    || supportBlendFraction < 0.0F
-                    || fullyLiftedFraction + 2.0F * supportBlendFraction >= 0.25F) {
+                    || contactBlendFraction < 0.0F
+                    || defaultAirborneFraction <= 0.0F
+                    || defaultAirborneFraction >= 1.0F
+                    || movementBlendTicks < 0
+                    || contactBlendFraction * 2.0F
+                            >= defaultAirborneFraction) {
                 throw new IllegalArgumentException("Gait timing values are invalid");
             }
+        }
+
+        public float walkAnimationUnitsPerCycle() {
+            return this.strideLengthBlocks * 4.0F;
+        }
+
+        public GaitConfig scaled(float scale) {
+            return new GaitConfig(
+                    this.strideLengthBlocks * scale,
+                    this.walkAnimationLengthSeconds,
+                    this.fullActivitySpeed,
+                    this.contactBlendFraction,
+                    this.defaultAirborneFraction,
+                    this.movementBlendTicks);
         }
     }
 }

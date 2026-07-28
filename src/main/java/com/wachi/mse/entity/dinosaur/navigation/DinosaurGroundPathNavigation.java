@@ -31,8 +31,8 @@ public final class DinosaurGroundPathNavigation extends GroundPathNavigation {
     private static final double MAX_COLLISION_SAMPLE_STEP = 0.75;
     private static final double COLLISION_EPSILON = 1.0E-4;
     private static final int LOCAL_PLAN_INTERVAL_TICKS = 3;
+    private static final double LOCAL_LIFT_COST = 0.2;
 
-    private final DinosaurNavigationConfig navigationConfig;
     private Entity movingTarget;
     private Vec3 fixedTarget;
     private double localSpeedModifier;
@@ -42,24 +42,33 @@ public final class DinosaurGroundPathNavigation extends GroundPathNavigation {
 
     public DinosaurGroundPathNavigation(Mob mob, Level level) {
         super(mob, level);
-        this.navigationConfig = ((ProceduralDinosaur) mob)
+        this.setMaxVisitedNodesMultiplier(
+                DinosaurNavigationConfig.DEFAULT.maxVisitedNodesMultiplier());
+    }
+
+    private DinosaurNavigationConfig navigationConfig() {
+        return ((ProceduralDinosaur) this.mob)
                 .proceduralConfig()
                 .navigation();
+    }
+
+    public void refreshSpeciesConfig() {
         this.setMaxVisitedNodesMultiplier(
-                this.navigationConfig.maxVisitedNodesMultiplier());
+                this.navigationConfig().maxVisitedNodesMultiplier());
+        this.stop();
     }
 
     @Override
     protected PathFinder createPathFinder(int maxVisitedNodes) {
         this.nodeEvaluator = new WalkNodeEvaluator();
         this.nodeEvaluator.setCanPassDoors(true);
-        DinosaurOrientationConfig orientation =
-                ((ProceduralDinosaur) this.mob).proceduralConfig().orientation();
         return new DinosaurPathFinder(
                 this.nodeEvaluator,
                 maxVisitedNodes,
                 this.mob,
-                orientation);
+                () -> ((ProceduralDinosaur) this.mob)
+                        .proceduralConfig()
+                        .orientation());
     }
 
     @Override
@@ -136,8 +145,8 @@ public final class DinosaurGroundPathNavigation extends GroundPathNavigation {
     private boolean usesLocalPlanner() {
         return ((ProceduralDinosaur) this.mob)
                         .proceduralConfig()
-                        .modelScale()
-                >= this.navigationConfig.localPlannerScaleThreshold();
+                        .scale()
+                >= this.navigationConfig().localPlannerScaleThreshold();
     }
 
     private void tickLocalPlanner() {
@@ -166,7 +175,7 @@ public final class DinosaurGroundPathNavigation extends GroundPathNavigation {
                 Math.min(
                         horizontalDistance,
                         Math.max(
-                                this.navigationConfig.minimumLocalProbeDistance(),
+                                this.navigationConfig().minimumLocalProbeDistance(),
                                 this.mob.getBbWidth() * 0.5)));
         double yawRadians = Math.toRadians(this.cachedLocalYaw);
         double forwardX = -Math.sin(yawRadians);
@@ -184,11 +193,21 @@ public final class DinosaurGroundPathNavigation extends GroundPathNavigation {
                         * 180.0F
                         / Math.PI)
                 - 90.0F;
+        DinosaurOrientationConfig orientation =
+                ((ProceduralDinosaur) this.mob)
+                        .proceduralConfig()
+                        .orientation();
+        double requestedSpeed =
+                this.mob.getAttributeValue(Attributes.MOVEMENT_SPEED)
+                        * this.localSpeedModifier;
+        double turningRadius =
+                orientation.turningRadiusBlocks(requestedSpeed);
+        double probeDistance = localProbeDistance();
         float bestYaw = desiredYaw;
         double bestLift = 0.0;
         double bestScore = Double.NEGATIVE_INFINITY;
         for (int sample = 0;
-                sample <= this.navigationConfig.steeringSamplesPerSide();
+                sample <= this.navigationConfig().steeringSamplesPerSide();
                 sample++) {
             int variants = sample == 0 ? 1 : 2;
             for (int variant = 0; variant < variants; variant++) {
@@ -197,12 +216,23 @@ public final class DinosaurGroundPathNavigation extends GroundPathNavigation {
                         : sample * (variant == 0 ? 1.0F : -1.0F);
                 float candidateYaw = desiredYaw
                         + signedSample
-                                * this.navigationConfig.steeringSampleDegrees();
+                                * this.navigationConfig().steeringSampleDegrees();
                 LocalProbe probe = probeDirection(candidateYaw);
                 if (!probe.passable()) {
                     continue;
                 }
-                double score = -Math.abs(signedSample) - probe.lift() * 0.2;
+                double targetErrorRadians = Math.toRadians(Math.abs(
+                        Mth.wrapDegrees(candidateYaw - desiredYaw)));
+                double headingChangeRadians = Math.toRadians(Math.abs(
+                        Mth.wrapDegrees(
+                                candidateYaw - this.mob.getYRot())));
+                double forwardProgress =
+                        Math.cos(targetErrorRadians) * probeDistance;
+                double turningArcCost =
+                        turningRadius * headingChangeRadians;
+                double score = forwardProgress
+                        - turningArcCost
+                        - probe.lift() * LOCAL_LIFT_COST;
                 if (score > bestScore) {
                     bestScore = score;
                     bestYaw = candidateYaw;
@@ -215,10 +245,7 @@ public final class DinosaurGroundPathNavigation extends GroundPathNavigation {
     }
 
     private LocalProbe probeDirection(float yawDegrees) {
-        double probeDistance = Math.max(
-                this.navigationConfig.minimumLocalProbeDistance(),
-                this.mob.getBbWidth()
-                        * this.navigationConfig.localProbeBodyWidths());
+        double probeDistance = localProbeDistance();
         double yawRadians = Math.toRadians(yawDegrees);
         double directionX = -Math.sin(yawRadians);
         double directionZ = Math.cos(yawRadians);
@@ -256,6 +283,13 @@ public final class DinosaurGroundPathNavigation extends GroundPathNavigation {
             }
         }
         return LocalProbe.BLOCKED;
+    }
+
+    private double localProbeDistance() {
+        return Math.max(
+                this.navigationConfig().minimumLocalProbeDistance(),
+                this.mob.getBbWidth()
+                        * this.navigationConfig().localProbeBodyWidths());
     }
 
     private static double horizontalDistanceSquared(Vec3 left, Vec3 right) {

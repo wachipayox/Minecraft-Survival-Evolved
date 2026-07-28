@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.phys.Vec3;
 
 public final class DinosaurProceduralAnimator {
     private static final double MAX_SMOOTHING_GAP_TICKS = 5.0;
@@ -39,19 +40,25 @@ public final class DinosaurProceduralAnimator {
                             config,
                             target.samples(),
                             target.legs(),
-                            target.targetPitchRadians(),
-                            target.targetRollRadians(),
+                            target.targetPitchRadians()
+                                    - target.targetBalancePitchRadians(),
+                            target.targetRollRadians()
+                                    - target.targetBalanceRollRadians(),
                             target.targetBodyTranslationYBlocks());
             List<DinosaurLegPose> legs = solveVisualLegs(
                     target,
                     config,
                     bodyTranslationY,
-                    target.targetPitchRadians(),
-                    target.targetRollRadians());
+                    target.targetPitchRadians()
+                            - target.targetBalancePitchRadians(),
+                    target.targetRollRadians()
+                            - target.targetBalanceRollRadians());
             SmoothedPose initial = new SmoothedPose(
                     target.targetPitchRadians(),
                     target.targetRollRadians(),
                     bodyTranslationY,
+                    target.targetBalancePitchRadians(),
+                    target.targetBalanceRollRadians(),
                     target.orientation(),
                     renderTime);
             this.smoothedPoses.put(entity, initial);
@@ -59,36 +66,46 @@ public final class DinosaurProceduralAnimator {
                     initial.pitch(),
                     initial.roll(),
                     initial.bodyTranslationY(),
+                    initial.balancePitch(),
+                    initial.balanceRoll(),
                     initial.orientation(),
                     legs);
         }
         if (renderTime == previous.renderTime()) {
+            float structuralPitch =
+                    previous.pitch() - previous.balancePitch();
+            float structuralRoll =
+                    previous.roll() - previous.balanceRoll();
             float bodyTranslationY =
                     DinosaurLegIkSolver.constrainBodyTranslationY(
                             config,
                             target.samples(),
                             target.legs(),
-                            previous.pitch(),
-                            previous.roll(),
+                            structuralPitch,
+                            structuralRoll,
                             previous.bodyTranslationY());
             List<DinosaurLegPose> legs = solveVisualLegs(
                     target,
                     config,
                     bodyTranslationY,
-                    previous.pitch(),
-                    previous.roll());
+                    structuralPitch,
+                    structuralRoll);
             this.smoothedPoses.put(
                     entity,
                     new SmoothedPose(
                             previous.pitch(),
                             previous.roll(),
                             bodyTranslationY,
+                            previous.balancePitch(),
+                            previous.balanceRoll(),
                             previous.orientation(),
                             renderTime));
             return target.withSmoothedValues(
                     previous.pitch(),
                     previous.roll(),
                     bodyTranslationY,
+                    previous.balancePitch(),
+                    previous.balanceRoll(),
                     previous.orientation(),
                     legs);
         }
@@ -97,6 +114,16 @@ public final class DinosaurProceduralAnimator {
         float alpha = (float) (1.0 - Math.exp(-config.smoothingResponsePerSecond() * elapsedSeconds));
         float pitch = lerp(previous.pitch(), target.targetPitchRadians(), alpha);
         float roll = lerp(previous.roll(), target.targetRollRadians(), alpha);
+        float balancePitch = lerp(
+                previous.balancePitch(),
+                target.targetBalancePitchRadians(),
+                alpha);
+        float balanceRoll = lerp(
+                previous.balanceRoll(),
+                target.targetBalanceRollRadians(),
+                alpha);
+        float structuralPitch = pitch - balancePitch;
+        float structuralRoll = roll - balanceRoll;
         float desiredBodyTranslationY = lerp(
                 previous.bodyTranslationY(),
                 target.targetBodyTranslationYBlocks(),
@@ -106,8 +133,8 @@ public final class DinosaurProceduralAnimator {
                         config,
                         target.samples(),
                         target.legs(),
-                        pitch,
-                        roll,
+                        structuralPitch,
+                        structuralRoll,
                         desiredBodyTranslationY);
         float orientationAlpha = (float) (1.0 - Math.exp(
                 -config.orientation().visualSmoothingResponsePerSecond()
@@ -126,20 +153,24 @@ public final class DinosaurProceduralAnimator {
                 target,
                 config,
                 bodyTranslationY,
-                pitch,
-                roll);
+                structuralPitch,
+                structuralRoll);
         this.smoothedPoses.put(
                 entity,
                 new SmoothedPose(
                         pitch,
                         roll,
                         bodyTranslationY,
+                        balancePitch,
+                        balanceRoll,
                         orientation,
                         renderTime));
         return target.withSmoothedValues(
                 pitch,
                 roll,
                 bodyTranslationY,
+                balancePitch,
+                balanceRoll,
                 orientation,
                 legs);
     }
@@ -149,14 +180,20 @@ public final class DinosaurProceduralAnimator {
             DinosaurProceduralConfig config,
             BoneSnapshots snapshots) {
         float animationBodyY = snapshots
-                .get(config.bones().body())
+                .get(config.bodyBone())
                 .map(snapshot -> applyBodyPose(snapshot, pose, config))
                 .orElse(0.0F);
         for (DinosaurLegPose leg : pose.legs()) {
+            float ikWeight = leg.forcedMaximumExtension()
+                    ? 1.0F
+                    : pose.gait().supportWeight(leg.legId());
             applyLegPose(
+                    config,
                     config.leg(leg.legId()),
                     compensateBodyAnimation(config, leg, pose, animationBodyY),
-                    snapshots);
+                    pose,
+                    snapshots,
+                    ikWeight);
         }
         applyLookPose(pose, config, snapshots);
     }
@@ -186,45 +223,156 @@ public final class DinosaurProceduralAnimator {
         float animationBodyY =
                 body.getTranslateY()
                         / MODEL_UNITS_PER_BLOCK
-                        * config.modelScale();
+                        * config.scale();
         body.setTranslateY(
                 body.getTranslateY()
                         + pose.bodyTranslationYBlocks()
                                 * MODEL_UNITS_PER_BLOCK
-                                / config.modelScale());
+                                / config.scale());
         body.setRotX(body.getRotX() + pose.pitchRadians());
         body.setRotZ(body.getRotZ() + pose.rollRadians());
         return animationBodyY;
     }
 
     private static void applyLegPose(
+            DinosaurProceduralConfig config,
             DinosaurLegRig rig,
-            DinosaurLegPose pose,
-            BoneSnapshots snapshots) {
-        snapshots.get(rig.upperBone()).ifPresent(snapshot ->
-                applyRotation(snapshot, pose.hipRotation()));
+            DinosaurLegPose legPose,
+            DinosaurProceduralPose bodyPose,
+            BoneSnapshots snapshots,
+            float ikWeight) {
+        snapshots.get(rig.upperBone()).ifPresent(snapshot -> {
+            Vec3 compensation = legRootCompensation(
+                    config,
+                    rig,
+                    bodyPose);
+            snapshot.setTranslateX(
+                    snapshot.getTranslateX()
+                            + (float) compensation.x
+                                    * MODEL_UNITS_PER_BLOCK
+                                    / config.scale());
+            snapshot.setTranslateY(
+                    snapshot.getTranslateY()
+                            + (float) compensation.y
+                                    * MODEL_UNITS_PER_BLOCK
+                                    / config.scale());
+            snapshot.setTranslateZ(
+                    snapshot.getTranslateZ()
+                            + (float) compensation.z
+                                    * MODEL_UNITS_PER_BLOCK
+                                    / config.scale());
+            snapshot.setRotX(
+                    snapshot.getRotX() - bodyPose.balancePitchRadians());
+            snapshot.setRotZ(
+                    snapshot.getRotZ() - bodyPose.balanceRollRadians());
+            blendRotation(
+                    snapshot,
+                    compensatedHipRotation(legPose, bodyPose),
+                    ikWeight);
+        });
         snapshots.get(rig.lowerBone()).ifPresent(snapshot ->
-                applyRotation(snapshot, pose.kneeRotation()));
+                blendRotation(snapshot, legPose.kneeRotation(), ikWeight));
         snapshots.get(rig.footBone()).ifPresent(snapshot ->
-                applyFootRotation(snapshot, pose));
+                blendFootRotation(snapshot, legPose, ikWeight));
     }
 
-    private static void applyRotation(
-            BoneSnapshot snapshot,
-            DinosaurBoneRotation rotation) {
-        snapshot.setRotX(snapshot.getRotX() + rotation.xRadians());
-        snapshot.setRotY(snapshot.getRotY() + rotation.yRadians());
-        snapshot.setRotZ(snapshot.getRotZ() + rotation.zRadians());
+    private static DinosaurBoneRotation compensatedHipRotation(
+            DinosaurLegPose legPose,
+            DinosaurProceduralPose bodyPose) {
+        DinosaurBoneRotation hip = legPose.hipRotation();
+        return new DinosaurBoneRotation(
+                hip.xRadians() - bodyPose.balancePitchRadians(),
+                hip.yRadians(),
+                hip.zRadians() - bodyPose.balanceRollRadians());
     }
 
-    private static void applyFootRotation(
+    /**
+     * Keeps each hip at the position produced by structural terrain tilt even
+     * though its parent body also carries a locomotion-only weight shift.
+     */
+    public static Vec3 legRootCompensation(
+            DinosaurProceduralConfig config,
+            DinosaurLegRig rig,
+            DinosaurProceduralPose pose) {
+        if (Math.abs(pose.balancePitchRadians()) < 1.0E-6F
+                && Math.abs(pose.balanceRollRadians()) < 1.0E-6F) {
+            return Vec3.ZERO;
+        }
+        Vec3 hipFromBodyPivot = new Vec3(
+                rig.renderedModelXOffset(),
+                rig.hipHeight() - config.bodyPivotHeight(),
+                rig.modelZOffset());
+        Vec3 structurallyTilted = rotateZ(
+                rotateX(
+                        hipFromBodyPivot,
+                        pose.structuralPitchRadians()),
+                pose.structuralRollRadians());
+        Vec3 totalLocal = rotateX(
+                rotateZ(
+                        structurallyTilted,
+                        -pose.rollRadians()),
+                -pose.pitchRadians());
+        return totalLocal.subtract(hipFromBodyPivot);
+    }
+
+    private static Vec3 rotateX(Vec3 point, float angle) {
+        double sine = Math.sin(angle);
+        double cosine = Math.cos(angle);
+        return new Vec3(
+                point.x,
+                point.y * cosine - point.z * sine,
+                point.y * sine + point.z * cosine);
+    }
+
+    private static Vec3 rotateZ(Vec3 point, float angle) {
+        double sine = Math.sin(angle);
+        double cosine = Math.cos(angle);
+        return new Vec3(
+                point.x * cosine - point.y * sine,
+                point.x * sine + point.y * cosine,
+                point.z);
+    }
+
+    /**
+     * Blends from the authored clip pose to an absolute IK rotation relative
+     * to the neutral rig. Adding both full rotations would make the animation
+     * and IK solve the same joint twice.
+     */
+    private static void blendRotation(
             BoneSnapshot snapshot,
-            DinosaurLegPose pose) {
-        applyRotation(snapshot, pose.footRotation());
-        snapshot.setRotX(
-                snapshot.getRotX() + pose.footTerrainPitchRadians());
-        snapshot.setRotZ(
-                snapshot.getRotZ() + pose.footTerrainRollRadians());
+            DinosaurBoneRotation rotation,
+            float ikWeight) {
+        snapshot.setRotX(blendAngle(
+                snapshot.getRotX(),
+                rotation.xRadians(),
+                ikWeight));
+        snapshot.setRotY(blendAngle(
+                snapshot.getRotY(),
+                rotation.yRadians(),
+                ikWeight));
+        snapshot.setRotZ(blendAngle(
+                snapshot.getRotZ(),
+                rotation.zRadians(),
+                ikWeight));
+    }
+
+    private static void blendFootRotation(
+            BoneSnapshot snapshot,
+            DinosaurLegPose pose,
+            float ikWeight) {
+        DinosaurBoneRotation foot = pose.footRotation();
+        snapshot.setRotX(blendAngle(
+                snapshot.getRotX(),
+                foot.xRadians() + pose.footTerrainPitchRadians(),
+                ikWeight));
+        snapshot.setRotY(blendAngle(
+                snapshot.getRotY(),
+                foot.yRadians(),
+                ikWeight));
+        snapshot.setRotZ(blendAngle(
+                snapshot.getRotZ(),
+                foot.zRadians() + pose.footTerrainRollRadians(),
+                ikWeight));
     }
 
     private static DinosaurLegPose compensateBodyAnimation(
@@ -242,8 +390,8 @@ public final class DinosaurProceduralAnimator {
                 rig,
                 smoothedLeg,
                 pose.bodyTranslationYBlocks() + animationBodyY,
-                pose.pitchRadians(),
-                pose.rollRadians())
+                pose.structuralPitchRadians(),
+                pose.structuralRollRadians())
                 .withFootTerrainTilt(
                         smoothedLeg.footTerrainPitchRadians(),
                         smoothedLeg.footTerrainRollRadians());
@@ -345,10 +493,27 @@ public final class DinosaurProceduralAnimator {
         return delta;
     }
 
+    private static float blendAngle(
+            float authored,
+            float procedural,
+            float proceduralWeight) {
+        if (proceduralWeight <= 0.0F) {
+            return authored;
+        }
+        if (proceduralWeight >= 1.0F) {
+            return procedural;
+        }
+        return authored
+                + angularDelta(authored, procedural)
+                        * proceduralWeight;
+    }
+
     private record SmoothedPose(
             float pitch,
             float roll,
             float bodyTranslationY,
+            float balancePitch,
+            float balanceRoll,
             DinosaurOrientationPose orientation,
             double renderTime) {
     }

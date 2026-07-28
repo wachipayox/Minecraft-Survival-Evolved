@@ -1,8 +1,11 @@
 package com.wachi.mse.entity.dinosaur.config;
 
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurBoneRotation;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import net.minecraft.util.Mth;
@@ -12,47 +15,11 @@ import net.minecraft.world.phys.Vec3;
  * Data-driven attacks for one dinosaur species.
  */
 public record DinosaurCombatConfig(List<Attack> attacks) {
-    public static final DinosaurCombatConfig PROTOTYPE =
-            new DinosaurCombatConfig(List.of(new Attack(
-                    "bite",
-                    "animation.prototype_dinosaur.bite",
-                    16,
-                    7,
-                    8,
-                    24,
-                    1.0F,
-                    0.35F,
-                    HitMode.PRIMARY_TARGET,
-                    List.of(new AttackVolume(
-                            "head",
-                            new Vec3(0.0, 22.0 / 16.0, -33.0 / 16.0),
-                            new Vec3(5.0 / 16.0, 4.5 / 16.0, 6.0 / 16.0))),
-                    List.of(
-                            frame(0),
-                            frame(
-                                    3,
-                                    rotation("neck_1", 10, 0, 0),
-                                    rotation("neck_2", 15, 0, 0),
-                                    rotation("head", 8, 0, 0),
-                                    rotation("jaw", -38, 0, 0)),
-                            frame(
-                                    6,
-                                    rotation("neck_1", -12, 0, 0),
-                                    rotation("neck_2", -18, 0, 0),
-                                    rotation("head", -12, 0, 0),
-                                    rotation("jaw", -38, 0, 0)),
-                            frame(
-                                    7,
-                                    rotation("neck_1", -12, 0, 0),
-                                    rotation("neck_2", -18, 0, 0),
-                                    rotation("head", -12, 0, 0)),
-                            frame(
-                                    10,
-                                    rotation("neck_1", -3, 0, 0),
-                                    rotation("neck_2", -5, 0, 0),
-                                    rotation("head", -3, 0, 0)),
-                            frame(16)))));
-
+    public static final Codec<DinosaurCombatConfig> CODEC =
+            Attack.CODEC.listOf()
+                    .optionalFieldOf("attacks", List.of())
+                    .codec()
+                    .xmap(DinosaurCombatConfig::new, DinosaurCombatConfig::attacks);
     public DinosaurCombatConfig {
         attacks = List.copyOf(attacks);
         Set<String> ids = new HashSet<>();
@@ -61,10 +28,6 @@ public record DinosaurCombatConfig(List<Attack> attacks) {
                 throw new IllegalArgumentException(
                         "Duplicate dinosaur attack " + attack.id());
             }
-        }
-        if (attacks.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "A combat-capable dinosaur needs an attack");
         }
     }
 
@@ -92,6 +55,31 @@ public record DinosaurCombatConfig(List<Attack> attacks) {
             HitMode hitMode,
             List<AttackVolume> volumes,
             List<Keyframe> keyframes) {
+        public static final Codec<Attack> CODEC =
+                RecordCodecBuilder.create(instance -> instance.group(
+                        Codec.STRING.fieldOf("id").forGetter(Attack::id),
+                        Codec.STRING.fieldOf("animation")
+                                .forGetter(Attack::animationName),
+                        Codec.INT.fieldOf("duration").forGetter(Attack::durationTicks),
+                        Codec.INT.fieldOf("active_start")
+                                .forGetter(Attack::activeStartTick),
+                        Codec.INT.fieldOf("active_end")
+                                .forGetter(Attack::activeEndTick),
+                        Codec.INT.fieldOf("cooldown").forGetter(Attack::cooldownTicks),
+                        Codec.FLOAT.optionalFieldOf("damage_multiplier", 1.0F)
+                                .forGetter(Attack::damageMultiplier),
+                        Codec.FLOAT.optionalFieldOf("knockback", 0.0F)
+                                .forGetter(Attack::knockback),
+                        HitMode.CODEC.optionalFieldOf(
+                                        "hit_mode",
+                                        HitMode.PRIMARY_TARGET)
+                                .forGetter(Attack::hitMode),
+                        AttackVolume.CODEC.listOf().fieldOf("volumes")
+                                .forGetter(Attack::volumes),
+                        Keyframe.CODEC.listOf().fieldOf("keyframes")
+                                .forGetter(Attack::keyframes)
+                ).apply(instance, Attack::new));
+
         public Attack {
             volumes = List.copyOf(volumes);
             keyframes = List.copyOf(keyframes);
@@ -172,6 +160,16 @@ public record DinosaurCombatConfig(List<Attack> attacks) {
             String boneName,
             Vec3 center,
             Vec3 halfExtents) {
+        public static final Codec<AttackVolume> CODEC =
+                RecordCodecBuilder.create(instance -> instance.group(
+                        Codec.STRING.fieldOf("bone")
+                                .forGetter(AttackVolume::boneName),
+                        Vec3.CODEC.fieldOf("center")
+                                .forGetter(AttackVolume::center),
+                        Vec3.CODEC.fieldOf("half_extents")
+                                .forGetter(AttackVolume::halfExtents)
+                ).apply(instance, AttackVolume::new));
+
         public AttackVolume {
             if (boneName == null
                     || boneName.isBlank()
@@ -189,6 +187,24 @@ public record DinosaurCombatConfig(List<Attack> attacks) {
     public record Keyframe(
             int tick,
             Map<String, DinosaurBoneRotation> rotations) {
+        private static final Codec<DinosaurBoneRotation> ROTATION_DEGREES_CODEC =
+                Vec3.CODEC.xmap(
+                        value -> new DinosaurBoneRotation(
+                                (float) Math.toRadians(value.x),
+                                (float) Math.toRadians(value.y),
+                                (float) Math.toRadians(value.z)),
+                        value -> new Vec3(
+                                Math.toDegrees(value.xRadians()),
+                                Math.toDegrees(value.yRadians()),
+                                Math.toDegrees(value.zRadians())));
+        public static final Codec<Keyframe> CODEC =
+                RecordCodecBuilder.create(instance -> instance.group(
+                        Codec.INT.fieldOf("tick").forGetter(Keyframe::tick),
+                        Codec.unboundedMap(Codec.STRING, ROTATION_DEGREES_CODEC)
+                                .optionalFieldOf("rotations", Map.of())
+                                .forGetter(Keyframe::rotations)
+                ).apply(instance, Keyframe::new));
+
         public Keyframe {
             rotations = Map.copyOf(rotations);
             if (tick < 0) {
@@ -200,26 +216,11 @@ public record DinosaurCombatConfig(List<Attack> attacks) {
 
     public enum HitMode {
         PRIMARY_TARGET,
-        AREA
+        AREA;
+
+        public static final Codec<HitMode> CODEC = Codec.STRING.xmap(
+                name -> valueOf(name.toUpperCase(Locale.ROOT)),
+                value -> value.name().toLowerCase(Locale.ROOT));
     }
 
-    @SafeVarargs
-    private static Keyframe frame(
-            int tick,
-            Map.Entry<String, DinosaurBoneRotation>... entries) {
-        return new Keyframe(tick, Map.ofEntries(entries));
-    }
-
-    private static Map.Entry<String, DinosaurBoneRotation> rotation(
-            String bone,
-            float xDegrees,
-            float yDegrees,
-            float zDegrees) {
-        return Map.entry(
-                bone,
-                new DinosaurBoneRotation(
-                        (float) Math.toRadians(xDegrees),
-                        (float) Math.toRadians(yDegrees),
-                        (float) Math.toRadians(zDegrees)));
-    }
 }

@@ -199,7 +199,6 @@ public final class DinosaurLegIkSolver {
     public static List<DinosaurLegPose> solve(
             DinosaurProceduralConfig config,
             List<DinosaurTerrainSample> samples,
-            DinosaurGaitState gait,
             float bodyTranslationY,
             float bodyPitchRadians,
             float bodyRollRadians) {
@@ -216,7 +215,6 @@ public final class DinosaurLegIkSolver {
                         config,
                         rig,
                         sample,
-                        gait,
                         bodyTranslationY,
                         bodyPitchRadians,
                         bodyRollRadians));
@@ -229,22 +227,14 @@ public final class DinosaurLegIkSolver {
             DinosaurProceduralConfig config,
             DinosaurLegRig rig,
             DinosaurTerrainSample sample,
-            DinosaurGaitState gait,
             float bodyTranslationY,
             float bodyPitchRadians,
             float bodyRollRadians) {
         double stanceTarget = stanceFootPivotHeight(config, rig, sample);
-        double neutralTarget = rig.footPivotHeight();
-        double swingAmount = (1.0 - sample.supportWeight()) * gait.activity();
-        double swingBase = Math.max(neutralTarget, stanceTarget);
-        // With no collision anywhere in the observation range, reaching for
-        // the bounded lower target reads better than playing a swing pose
-        // over empty space. It is exactly the same height used when a block is
-        // found at the configured minimum visual drop.
-        double targetHeight = sample.valid()
-                ? Mth.lerp(sample.supportWeight(), swingBase, stanceTarget)
-                        + config.swingFootLift() * swingAmount
-                : stanceTarget;
+        // Swing trajectory belongs exclusively to the authored walk clip.
+        // The logical IK pose remains grounded so it can be blended in during
+        // lift-off and planting without introducing a second artificial step.
+        double targetHeight = stanceTarget;
         return solveTarget(
                 config,
                 rig,

@@ -1,5 +1,6 @@
 package com.wachi.mse.entity.dinosaur.control;
 
+import com.wachi.mse.entity.dinosaur.ProceduralDinosaur;
 import com.wachi.mse.entity.dinosaur.config.DinosaurOrientationConfig;
 import com.wachi.mse.entity.dinosaur.config.DinosaurNavigationConfig;
 import net.minecraft.util.Mth;
@@ -18,9 +19,12 @@ import net.minecraft.world.entity.ai.control.MoveControl;
  */
 public final class DinosaurMoveControl extends MoveControl {
     private static final int LOOK_TURN_REQUEST_TICKS = 3;
+    private static final double IDLE_SPEED_FRACTION = 0.30;
+    private static final double PLAYER_BASE_WALK_SPEED = 0.10;
+    private static final double PLAYER_STANDING_HEIGHT = 1.80;
 
-    private final DinosaurOrientationConfig config;
-    private final DinosaurNavigationConfig navigationConfig;
+    private final DinosaurOrientationConfig fallbackOrientationConfig;
+    private final DinosaurNavigationConfig fallbackNavigationConfig;
     private float lookTurnTargetYaw;
     private int lookTurnTicks;
     private double lastControlX;
@@ -31,14 +35,15 @@ public final class DinosaurMoveControl extends MoveControl {
     private int lastRiddenControlTick = Integer.MIN_VALUE;
     private int stalledTicks;
     private int riddenStalledTicks;
+    private boolean idleMovement;
 
     public DinosaurMoveControl(
             Mob mob,
             DinosaurOrientationConfig config,
             DinosaurNavigationConfig navigationConfig) {
         super(mob);
-        this.config = config;
-        this.navigationConfig = navigationConfig;
+        this.fallbackOrientationConfig = config;
+        this.fallbackNavigationConfig = navigationConfig;
         this.lastControlX = mob.getX();
         this.lastControlZ = mob.getZ();
         this.lastRiddenControlX = mob.getX();
@@ -56,6 +61,43 @@ public final class DinosaurMoveControl extends MoveControl {
 
     public boolean isLookTurnActive() {
         return this.lookTurnTicks > 0;
+    }
+
+    /**
+     * Calculates a calm absolute roaming speed from the live entity size.
+     *
+     * <p>Idle travel normally uses 30% of maximum speed. Its lower bound
+     * scales from a player's base walking speed using entity height, and the
+     * result is always capped at the dinosaur's maximum speed.</p>
+     */
+    public static float idleSpeedFor(Mob mob) {
+        double maximumSpeed =
+                mob.getAttributeValue(Attributes.MOVEMENT_SPEED);
+        double sizeAdjustedMinimum =
+                PLAYER_BASE_WALK_SPEED
+                        * mob.getBbHeight()
+                        / PLAYER_STANDING_HEIGHT;
+        return (float) Math.min(
+                maximumSpeed,
+                Math.max(
+                        maximumSpeed * IDLE_SPEED_FRACTION,
+                        sizeAdjustedMinimum));
+    }
+
+    public static double idleSpeedModifierFor(Mob mob) {
+        double maximumSpeed =
+                mob.getAttributeValue(Attributes.MOVEMENT_SPEED);
+        return maximumSpeed > 1.0E-6
+                ? idleSpeedFor(mob) / maximumSpeed
+                : 0.0;
+    }
+
+    public void beginIdleMovement() {
+        this.idleMovement = true;
+    }
+
+    public void endIdleMovement() {
+        this.idleMovement = false;
     }
 
     /**
@@ -80,16 +122,17 @@ public final class DinosaurMoveControl extends MoveControl {
         this.lastRiddenControlTick = this.mob.tickCount;
         float maximumChange =
                 maximumYawChangeForDisplacement(lastTickDistance);
-        if (lastTickDistance < this.navigationConfig.minimumProgressBlocks()) {
+        DinosaurNavigationConfig navigation = navigationConfig();
+        if (lastTickDistance < navigation.minimumProgressBlocks()) {
             this.riddenStalledTicks++;
         } else {
             this.riddenStalledTicks = 0;
         }
         if (this.riddenStalledTicks
-                >= this.navigationConfig.stuckTurnDelayTicks()) {
+                >= navigation.stuckTurnDelayTicks()) {
             maximumChange = Math.max(
                     maximumChange,
-                    this.navigationConfig.stuckTurnDegreesPerTick());
+                    recoveryYawChange());
         }
         if (maximumChange > 0.0F) {
             this.mob.setYRot(super.rotlerp(
@@ -108,29 +151,46 @@ public final class DinosaurMoveControl extends MoveControl {
     @Override
     public void tick() {
         captureDistanceSinceLastControlTick();
+        boolean normalizeForwardInput =
+                hasAutonomousForwardRequest();
         if (this.operation != Operation.WAIT) {
             super.tick();
-            ageLookTurnRequest();
-            return;
-        }
-
-        if (canPerformLookTurn()) {
+        } else if (canPerformLookTurn()) {
             tickLookTurn();
         } else {
             super.tick();
         }
         ageLookTurnRequest();
+        if (this.idleMovement
+                && this.mob.getControllingPassenger() == null) {
+            /*
+             * Navigation and look-turn transitions may both write speed. This
+             * final absolute cap keeps bends as calm as straight idle travel.
+             */
+            this.mob.setSpeed(idleSpeedFor(this.mob));
+        }
+        if (normalizeForwardInput
+                && this.mob.getControllingPassenger() == null) {
+            /*
+             * Mob#setSpeed also writes zza=speed. Leaving that untouched makes
+             * autonomous travel multiply the requested speed by itself, while
+             * ridden travel receives the player's normalized forward input.
+             * Keep speed as the absolute locomotion value and normalize only
+             * the input component so AI and rider use identical physics.
+             */
+            this.mob.setZza(1.0F);
+        }
     }
 
     @Override
     protected float rotlerp(float currentYaw, float targetYaw, float ignoredMaximumChange) {
         float maximumChange = maximumYawChangeForLastDisplacement();
-        if (this.stalledTicks >= this.navigationConfig.stuckTurnDelayTicks()
+        if (this.stalledTicks >= navigationConfig().stuckTurnDelayTicks()
                 && this.mob.onGround()
                 && !this.mob.isInWater()) {
             maximumChange = Math.max(
                     maximumChange,
-                    this.navigationConfig.stuckTurnDegreesPerTick());
+                    recoveryYawChange());
         }
         if (maximumChange <= 0.0F) {
             return currentYaw;
@@ -148,20 +208,24 @@ public final class DinosaurMoveControl extends MoveControl {
 
         float remainingYaw = Math.abs(Mth.wrapDegrees(
                 this.lookTurnTargetYaw - this.mob.getYRot()));
-        return remainingYaw > this.config.bodyTurnStopYawDegrees();
+        return remainingYaw
+                > orientationConfig().bodyTurnStopYawDegrees();
     }
 
     private void tickLookTurn() {
-        float movementSpeed = (float) (
-                this.mob.getAttributeValue(Attributes.MOVEMENT_SPEED)
-                        * this.config.lookTurnSpeedModifier());
+        DinosaurOrientationConfig orientation = orientationConfig();
+        float movementSpeed = this.mob.getTarget() == null
+                ? idleSpeedFor(this.mob)
+                : (float) (
+                        this.mob.getAttributeValue(Attributes.MOVEMENT_SPEED)
+                                * orientation.lookTurnSpeedModifier());
         this.mob.setSpeed(movementSpeed);
         this.mob.setXxa(0.0F);
         this.mob.setZza(1.0F);
         this.mob.setYRot(this.rotlerp(
                 this.mob.getYRot(),
                 this.lookTurnTargetYaw,
-                this.config.maxBodyYawChangeDegreesPerTick()));
+                orientation.maxBodyYawChangeDegreesPerTick()));
     }
 
     private float maximumYawChangeForLastDisplacement() {
@@ -170,14 +234,16 @@ public final class DinosaurMoveControl extends MoveControl {
 
     private float maximumYawChangeForDisplacement(
             double horizontalDistance) {
+        DinosaurOrientationConfig orientation = orientationConfig();
         if ((!this.mob.onGround() && !this.mob.isInWater())
-                || horizontalDistance < this.config.minimumTurningDistance()) {
+                || horizontalDistance
+                        < orientation.minimumTurningDistance()) {
             return 0.0F;
         }
         return Math.min(
-                this.config.maxBodyYawChangeDegreesPerTick(),
+                orientation.maxBodyYawChangeDegreesPerTick(),
                 (float) (horizontalDistance
-                        * this.config.steeringDegreesPerBlock()));
+                        * orientation.steeringDegreesPerBlock()));
     }
 
     private void captureDistanceSinceLastControlTick() {
@@ -193,7 +259,7 @@ public final class DinosaurMoveControl extends MoveControl {
         if (intendsToMove
                 && this.mob.onGround()
                 && this.lastHorizontalDistance
-                        < this.navigationConfig.minimumProgressBlocks()) {
+                        < navigationConfig().minimumProgressBlocks()) {
             this.stalledTicks++;
         } else {
             this.stalledTicks = 0;
@@ -204,5 +270,41 @@ public final class DinosaurMoveControl extends MoveControl {
         if (this.lookTurnTicks > 0) {
             this.lookTurnTicks--;
         }
+    }
+
+    private boolean hasAutonomousForwardRequest() {
+        if (this.operation == Operation.JUMPING) {
+            return true;
+        }
+        if (this.operation != Operation.MOVE_TO) {
+            return false;
+        }
+        double x = this.wantedX - this.mob.getX();
+        double y = this.wantedY - this.mob.getY();
+        double z = this.wantedZ - this.mob.getZ();
+        return x * x + y * y + z * z >= 2.5000003E-7F;
+    }
+
+    private DinosaurOrientationConfig orientationConfig() {
+        return this.mob instanceof ProceduralDinosaur dinosaur
+                ? dinosaur.proceduralConfig().orientation()
+                : this.fallbackOrientationConfig;
+    }
+
+    private DinosaurNavigationConfig navigationConfig() {
+        return this.mob instanceof ProceduralDinosaur dinosaur
+                ? dinosaur.proceduralConfig().navigation()
+                : this.fallbackNavigationConfig;
+    }
+
+    /**
+     * Stuck recovery may rotate without displacement, but never faster than
+     * the live scale-aware angular cap. This preserves recovery for a blocked
+     * animal without letting a giant pivot like its unscaled prototype.
+     */
+    private float recoveryYawChange() {
+        return Math.min(
+                navigationConfig().stuckTurnDegreesPerTick(),
+                orientationConfig().maxBodyYawChangeDegreesPerTick());
     }
 }

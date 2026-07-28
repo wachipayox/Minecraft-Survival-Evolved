@@ -1,6 +1,6 @@
 package com.wachi.mse.entity.dinosaur.hitbox;
 
-import com.wachi.mse.entity.dinosaur.PrototypeDinosaurEntity;
+import com.wachi.mse.entity.dinosaur.DinosaurEntity;
 import com.wachi.mse.entity.dinosaur.config.DinosaurCombatConfig;
 import com.wachi.mse.entity.dinosaur.config.DinosaurProceduralConfig;
 import com.wachi.mse.entity.dinosaur.config.DinosaurSkeletonConfig;
@@ -20,26 +20,30 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class DinosaurHitboxController {
     private static final int IDLE_UPDATE_INTERVAL_TICKS = 2;
+    private static final double PLAYER_RAY_TOLERANCE_BLOCKS = 0.10;
 
-    private final PrototypeDinosaurEntity parent;
-    private final DinosaurPartEntity[] parts;
+    private final DinosaurEntity parent;
+    private final DinosaurPartEntity[] subParts;
     private AABB visualBounds;
 
     public DinosaurHitboxController(
-            PrototypeDinosaurEntity parent,
-            DinosaurSkeletonConfig skeleton) {
+            DinosaurEntity parent,
+            DinosaurSkeletonConfig skeleton
+    ) {
         this.parent = parent;
-        this.parts = new DinosaurPartEntity[skeleton.hitboxParts().size()];
-        for (int index = 0; index < this.parts.length; index++) {
-            this.parts[index] = new DinosaurPartEntity(
+        this.subParts = new DinosaurPartEntity[skeleton.hitboxParts().size()];
+
+        for (int index = 0; index < this.subParts.length; index++) {
+            this.subParts[index] = new DinosaurPartEntity(
                     parent,
-                    skeleton.hitboxParts().get(index));
+                    skeleton.hitboxParts().get(index)
+            );
         }
         this.visualBounds = parent.getBoundingBox();
     }
 
     public DinosaurPartEntity[] parts() {
-        return this.parts;
+        return this.subParts;
     }
 
     public AABB visualBounds() {
@@ -82,40 +86,57 @@ public final class DinosaurHitboxController {
             DinosaurSkeletonConfig.HitboxPart part,
             Player player) {
         Vec3 start = player.getEyePosition();
-        Vec3 end = start.add(player.getLookAngle().scale(8.0));
+        double scale = this.parent.proceduralConfig().scale();
+        double tolerance =
+                PLAYER_RAY_TOLERANCE_BLOCKS * scale;
+        double reach = player.entityInteractionRange() + tolerance;
+        Vec3 end = start.add(player.getLookAngle().scale(reach));
         return DinosaurPoseTransforms.hitboxPartBoxBounds(
                         poseSnapshot(),
                         part)
                 .stream()
-                .anyMatch(box -> box.clip(start, end).isPresent());
+                /*
+                 * Client selection and the authoritative pose can be one
+                 * movement/animation tick apart. A small scale-aware margin
+                 * prevents valid multipart hits from being rejected while
+                 * preserving the per-bone test instead of accepting the whole
+                 * broad-phase union.
+                 */
+                .anyMatch(box -> box.inflate(tolerance)
+                        .clip(start, end)
+                        .isPresent());
+    }
+
+    private boolean shouldUpdateSubParts(){
+        return (this.parent.tickCount + this.parent.getId()) % IDLE_UPDATE_INTERVAL_TICKS == 0;
     }
 
     public void tick() {
         boolean attacking = this.parent.activeAttack() != null;
-        if (!attacking
-                && (this.parent.tickCount + this.parent.getId())
-                        % IDLE_UPDATE_INTERVAL_TICKS != 0) {
-            return;
-        }
+
+        if (!attacking && !shouldUpdateSubParts()) return;
 
         DinosaurProceduralConfig config = this.parent.proceduralConfig();
-        DinosaurProceduralPose pose =
-                this.parent.authoritativeProceduralPose();
+        DinosaurProceduralPose pose = this.parent.authoritativeProceduralPose();
         DinosaurCombatConfig.Attack attack = this.parent.activeAttack();
+
         float elapsed = this.parent.attackElapsedTicks(0.0F);
+
         DinosaurPoseTransforms.PoseSnapshot snapshot =
                 DinosaurPoseTransforms.snapshot(
                         config,
                         pose,
                         attack,
-                        elapsed);
+                        elapsed
+                );
+
         AABB union = this.parent.getBoundingBox();
-        for (DinosaurPartEntity part : this.parts) {
-            AABB partBounds = DinosaurPoseTransforms.hitboxPartBounds(
+        for (DinosaurPartEntity part : this.subParts) {
+            AABB bounds = DinosaurPoseTransforms.hitboxPartBounds(
                     snapshot,
                     part.partConfig());
-            part.setPartBounds(partBounds);
-            union = union.minmax(partBounds);
+            part.setPartBounds(bounds);
+            union = union.minmax(bounds);
         }
         this.visualBounds = union;
     }

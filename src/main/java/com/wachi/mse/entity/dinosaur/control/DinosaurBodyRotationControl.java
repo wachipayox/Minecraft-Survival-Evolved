@@ -25,8 +25,9 @@ public final class DinosaurBodyRotationControl extends BodyRotationControl {
         double horizontalDistanceSquared =
                 Mth.square(this.mob.getX() - this.mob.xo)
                         + Mth.square(this.mob.getZ() - this.mob.zo);
-        if (horizontalDistanceSquared
-                >= Mth.square(config.minimumTurningDistance())) {
+        if (this.mob.isAggressive()
+                || horizontalDistanceSquared
+                        >= Mth.square(config.minimumTurningDistance())) {
             this.mob.yBodyRot = this.mob.getYRot();
         }
         this.mob.yHeadRot = Mth.rotateIfNecessary(

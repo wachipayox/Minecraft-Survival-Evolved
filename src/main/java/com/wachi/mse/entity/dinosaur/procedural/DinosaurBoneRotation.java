@@ -1,7 +1,7 @@
 package com.wachi.mse.entity.dinosaur.procedural;
 
 /**
- * Additive GeckoLib bone rotation in radians.
+ * IK bone rotation in radians relative to the neutral GeckoLib rig.
  */
 public record DinosaurBoneRotation(float xRadians, float yRadians, float zRadians) {
     public static final DinosaurBoneRotation ZERO =

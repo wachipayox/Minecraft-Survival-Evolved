@@ -2,7 +2,8 @@ package com.wachi.mse.client;
 
 import com.wachi.mse.MseMod;
 import com.wachi.mse.client.debug.DinosaurDebugRenderer;
-import com.wachi.mse.client.renderer.PrototypeDinosaurRenderer;
+import com.wachi.mse.client.renderer.DinosaurRenderer;
+import com.wachi.mse.entity.dino.DinoCaprinoEntityRenderer;
 import com.wachi.mse.registry.MseEntities;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
@@ -18,10 +19,14 @@ public final class MseModClient {
     }
 
     private void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
-        event.registerEntityRenderer(MseEntities.PROTOTYPE_DINOSAUR.get(), PrototypeDinosaurRenderer::new);
         event.registerEntityRenderer(
-                MseEntities.GIANT_PROTOTYPE_DINOSAUR.get(),
-                PrototypeDinosaurRenderer::new);
+                MseEntities.PROTOTYPE_DINOSAUR.get(),
+                DinosaurRenderer::new
+        );
+        event.registerEntityRenderer(
+                MseEntities.DINO_CAPRINO.get(),
+                DinoCaprinoEntityRenderer::new
+        );
     }
 
     private void registerDebugRenderers(RegisterDebugRenderersEvent event) {

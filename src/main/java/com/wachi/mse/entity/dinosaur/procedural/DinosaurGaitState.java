@@ -9,8 +9,8 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 
 /**
- * Shared gait phase and continuous stance weights. Procedural foot lift uses
- * this same phase so render contacts and logical contacts agree.
+ * Shared distance-driven gait phase and continuous stance weights. GeckoLib
+ * playback and logical support both consume this state.
  */
 public record DinosaurGaitState(
         float phase,
@@ -52,7 +52,7 @@ public record DinosaurGaitState(
         Map<String, Float> weights = new LinkedHashMap<>();
 
         for (DinosaurLegRig leg : config.legs()) {
-            float phaseWeight = phaseSupportWeight(phase, leg.swingPhase(), gait);
+            float phaseWeight = phaseSupportWeight(phase, leg, gait);
             weights.put(leg.id(), Mth.lerp(activity, 1.0F, phaseWeight));
         }
 
@@ -63,24 +63,39 @@ public record DinosaurGaitState(
         return this.supportWeights.getOrDefault(legId, 1.0F);
     }
 
+    public float airborneWeight(String legId) {
+        return 1.0F - this.supportWeight(legId);
+    }
+
     private static float phaseSupportWeight(
             float gaitPhase,
-            float swingCenter,
+            DinosaurLegRig leg,
             GaitConfig gait) {
-        float distance = Math.abs(gaitPhase - swingCenter);
-        distance = Math.min(distance, 1.0F - distance);
-        float fullyLiftedHalfWidth = gait.fullyLiftedFraction() * 0.5F;
-        if (distance <= fullyLiftedHalfWidth) {
+        float airborneDuration = positiveFraction(
+                leg.plantPhase() - leg.liftOffPhase());
+        float airborneProgress = positiveFraction(
+                gaitPhase - leg.liftOffPhase());
+        float blend = Math.min(
+                gait.contactBlendFraction(),
+                airborneDuration * 0.5F);
+        if (airborneProgress < airborneDuration) {
+            if (blend <= 0.0F) {
+                return 0.0F;
+            }
+            if (airborneProgress < blend) {
+                return smoothStep(1.0F - airborneProgress / blend);
+            }
             return 0.0F;
         }
 
-        float blendEnd = fullyLiftedHalfWidth + gait.supportBlendFraction();
-        if (distance >= blendEnd || gait.supportBlendFraction() == 0.0F) {
+        if (blend <= 0.0F) {
             return 1.0F;
         }
-
-        float blend = (distance - fullyLiftedHalfWidth) / gait.supportBlendFraction();
-        return smoothStep(blend);
+        float stanceProgress = positiveFraction(
+                gaitPhase - leg.plantPhase());
+        return stanceProgress < blend
+                ? smoothStep(stanceProgress / blend)
+                : 1.0F;
     }
 
     private static float positiveFraction(float value) {

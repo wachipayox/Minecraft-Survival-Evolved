@@ -1,7 +1,8 @@
 package com.wachi.mse.registry;
 
 import com.wachi.mse.MseMod;
-import com.wachi.mse.entity.dinosaur.GiantPrototypeDinosaurEntity;
+import com.wachi.mse.entity.dino.DinoCaprinoEntity;
+import com.wachi.mse.entity.dinosaur.DinosaurEntity;
 import com.wachi.mse.entity.dinosaur.PrototypeDinosaurEntity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
@@ -20,27 +21,24 @@ public final class MseEntities {
                     MobCategory.CREATURE,
                     builder -> builder
                             .sized(1.2F, 1.4F)
-                            .clientTrackingRange(12));
+                            .clientTrackingRange(12)
+            );
 
-    public static final DeferredHolder<EntityType<?>, EntityType<GiantPrototypeDinosaurEntity>>
-            GIANT_PROTOTYPE_DINOSAUR =
-                    ENTITY_TYPES.registerEntityType(
-                            "giant_prototype_dinosaur",
-                            GiantPrototypeDinosaurEntity::new,
-                            MobCategory.CREATURE,
-                            builder -> builder
-                                    // Explicit physical bounds for the x10
-                                    // fixture; visual anatomy is multipart.
-                                    .sized(12F, 14F)
-                                    .clientTrackingRange(32));
-
-    private MseEntities() {
-    }
+    public static final DeferredHolder<EntityType<?>, EntityType<DinoCaprinoEntity>>
+            DINO_CAPRINO = ENTITY_TYPES.registerEntityType(
+                "dino_caprino", DinoCaprinoEntity::new,
+            MobCategory.CREATURE, builder -> builder
+                    .sized(4F, 4F)
+    ) ;
 
     public static void registerAttributes(EntityAttributeCreationEvent event) {
-        event.put(PROTOTYPE_DINOSAUR.get(), PrototypeDinosaurEntity.createAttributes().build());
         event.put(
-                GIANT_PROTOTYPE_DINOSAUR.get(),
-                GiantPrototypeDinosaurEntity.createGiantAttributes().build());
+                PROTOTYPE_DINOSAUR.get(),
+                DinosaurEntity.createAttributes().build()
+        );
+        event.put(
+                DINO_CAPRINO.get(),
+                DinoCaprinoEntity.createAttributes().build()
+        );
     }
 }

@@ -22,7 +22,9 @@ public record DinosaurLegRig(
         double footHalfWidth,
         double footHalfLength,
         float kneeBendDirection,
-        float swingPhase) {
+        float liftOffPhase,
+        float apexPhase,
+        float plantPhase) {
     public DinosaurLegRig {
         if (id == null
                 || id.isBlank()
@@ -44,8 +46,20 @@ public record DinosaurLegRig(
         if (kneeBendDirection != -1.0F && kneeBendDirection != 1.0F) {
             throw new IllegalArgumentException("Knee bend direction must be -1 or +1");
         }
-        if (swingPhase < 0.0F || swingPhase >= 1.0F) {
-            throw new IllegalArgumentException("Swing phase must be in [0, 1)");
+        if (!normalizedPhase(liftOffPhase)
+                || !normalizedPhase(apexPhase)
+                || !normalizedPhase(plantPhase)) {
+            throw new IllegalArgumentException(
+                    "Leg contact phases must be in [0, 1)");
+        }
+        float airborneDuration = positiveFraction(plantPhase - liftOffPhase);
+        float apexProgress = positiveFraction(apexPhase - liftOffPhase);
+        if (airborneDuration <= 0.0F
+                || airborneDuration >= 1.0F
+                || apexProgress <= 0.0F
+                || apexProgress >= airborneDuration) {
+            throw new IllegalArgumentException(
+                    "Leg apex must lie between lift-off and plant");
         }
     }
 
@@ -66,5 +80,13 @@ public record DinosaurLegRig(
      */
     public double renderedModelXOffset() {
         return -this.modelXOffset;
+    }
+
+    private static boolean normalizedPhase(float phase) {
+        return Float.isFinite(phase) && phase >= 0.0F && phase < 1.0F;
+    }
+
+    private static float positiveFraction(float value) {
+        return value - (float) Math.floor(value);
     }
 }

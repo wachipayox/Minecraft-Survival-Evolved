@@ -19,6 +19,10 @@ public record DinosaurProceduralPose(
         float targetPitchRadians,
         float targetRollRadians,
         float targetBodyTranslationYBlocks,
+        float balancePitchRadians,
+        float balanceRollRadians,
+        float targetBalancePitchRadians,
+        float targetBalanceRollRadians,
         float terrainPitchRadians,
         float terrainRollRadians,
         boolean pitchResolved,
@@ -34,6 +38,14 @@ public record DinosaurProceduralPose(
 
     public boolean terrainValid() {
         return this.pitchResolved || this.rollResolved;
+    }
+
+    public float structuralPitchRadians() {
+        return this.pitchRadians - this.balancePitchRadians;
+    }
+
+    public float structuralRollRadians() {
+        return this.rollRadians - this.balanceRollRadians;
     }
 
     public boolean fullyResolved() {
@@ -73,6 +85,8 @@ public record DinosaurProceduralPose(
             float pitch,
             float roll,
             float bodyTranslationY,
+            float balancePitch,
+            float balanceRoll,
             DinosaurOrientationPose smoothedOrientation,
             List<DinosaurLegPose> smoothedLegs) {
         return new DinosaurProceduralPose(
@@ -85,6 +99,10 @@ public record DinosaurProceduralPose(
                 this.targetPitchRadians,
                 this.targetRollRadians,
                 this.targetBodyTranslationYBlocks,
+                balancePitch,
+                balanceRoll,
+                this.targetBalancePitchRadians,
+                this.targetBalanceRollRadians,
                 this.terrainPitchRadians,
                 this.terrainRollRadians,
                 this.pitchResolved,

@@ -1,6 +1,6 @@
 package com.wachi.mse.entity.dinosaur.hitbox;
 
-import com.wachi.mse.entity.dinosaur.PrototypeDinosaurEntity;
+import com.wachi.mse.entity.dinosaur.DinosaurEntity;
 import com.wachi.mse.entity.dinosaur.config.DinosaurSkeletonConfig;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
@@ -18,18 +18,20 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
+import java.util.UUID;
+
 /**
  * Native NeoForge multipart broad-phase entry for a logical dinosaur region.
  */
 public final class DinosaurPartEntity
-        extends net.neoforged.neoforge.entity.PartEntity<PrototypeDinosaurEntity> {
+        extends net.neoforged.neoforge.entity.PartEntity<DinosaurEntity> {
     private static final EntityDimensions PLACEHOLDER_SIZE =
             EntityDimensions.fixed(1.0F, 1.0F);
 
     private final DinosaurSkeletonConfig.HitboxPart partConfig;
 
     public DinosaurPartEntity(
-            PrototypeDinosaurEntity parent,
+            DinosaurEntity parent,
             DinosaurSkeletonConfig.HitboxPart partConfig) {
         super(parent);
         this.partConfig = partConfig;

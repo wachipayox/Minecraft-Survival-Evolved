@@ -47,7 +47,7 @@ public final class DinosaurLookControl extends LookControl {
                 this.config.maxNeckYawDegrees());
 
         float targetPitch = Mth.clamp(
-                controller.getXRot(),
+                -controller.getXRot(),
                 -this.config.maxPitchUpDegrees(),
                 this.config.maxPitchDownDegrees());
         this.mob.setXRot(this.rotateTowards(
@@ -120,7 +120,8 @@ public final class DinosaurLookControl extends LookControl {
             float yawError) {
         if (movement == null
                 || !this.mob.getNavigation().isDone()
-                || !this.mob.onGround()) {
+                || !this.mob.onGround()
+                || this.mob.getTarget() == null) {
             if (movement != null) {
                 movement.cancelLookTurn();
             }
