@@ -23,6 +23,7 @@ public final class DinosaurTerrainSampler {
     private static final double SAMPLE_EPSILON = 1.0E-5;
     private static final double FOOTPRINT_SUPPORT_DEPTH = 0.125;
     private static final double FOOTPRINT_SUPPORT_TOP_TOLERANCE = 0.05;
+    private static final double FOOT_PLANE_CENTER_TOLERANCE = 0.20;
 
     private DinosaurTerrainSampler() {
     }
@@ -60,15 +61,24 @@ public final class DinosaurTerrainSampler {
     public static DinosaurProceduralPose sampleAuthoritative(
             LivingEntity entity,
             DinosaurProceduralConfig config) {
+        /*
+         * LivingEntityRenderer rotates the model from yBodyRot, not from the
+         * entity's navigation yaw. These values can intentionally differ
+         * while a dinosaur is turning in place or steering through a tight
+         * arc. Using getYRot() here made the logical bone boxes describe a
+         * different rigid body than the visible model precisely during those
+         * turns, which then produced an incorrect platform displacement.
+         */
+        float bodyYaw = entity.yBodyRot;
         return sampleAt(
                 entity,
                 config,
                 entity.position(),
-                entity.getYRot(),
+                bodyYaw,
                 DinosaurGaitState.sampleAuthoritative(entity, config),
                 orientationPose(
                         config,
-                        entity.getYRot(),
+                        bodyYaw,
                         entity.yHeadRot,
                         entity.getXRot()));
     }
@@ -129,35 +139,44 @@ public final class DinosaurTerrainSampler {
         double modelYawRadians = Math.toRadians(180.0F - bodyYawDegrees);
         double sinYaw = Math.sin(modelYawRadians);
         double cosYaw = Math.cos(modelYawRadians);
+        if (isDescendingAirborne(entity)) {
+            return sampleAirbornePose(
+                    config,
+                    origin,
+                    bodyYawDegrees,
+                    gait,
+                    orientation,
+                    sinYaw,
+                    cosYaw);
+        }
         CollisionContext collisionContext = CollisionContext.of(entity);
         BlockPos.MutableBlockPos mutableBlockPos = new BlockPos.MutableBlockPos();
         List<DinosaurTerrainSample> samples = new ArrayList<>(config.legs().size());
 
         for (DinosaurLegRig leg : config.legs()) {
             double observationBelow = observationDepthBelow(config, leg);
-            GroundHit hit = findBestGroundHit(
+            FootGroundFit groundFit = sampleFootGround(
                     level,
                     collisionContext,
-                    mutableBlockPos,
                     origin,
                     leg,
-                    config.contactPatchRadius(),
+                    config,
                     sinYaw,
                     cosYaw,
                     config.sampleAbove(),
                     observationBelow);
-            boolean valid = hit != null;
+            boolean valid = groundFit != null;
             Vec3 position;
             if (valid) {
-                position = hit.position();
+                position = groundFit.position();
             } else {
                 // Keep the old bounded visual drop when no floor exists at
                 // all. The farther awareness range is only allowed to affect
                 // the pose when it finds real collision geometry.
                 Vec3 nominalPosition = modelPointToWorld(
                         origin,
-                        leg.modelXOffset(),
-                        leg.modelZOffset(),
+                        leg.modelFootCenterXOffset(),
+                        leg.modelFootCenterZOffset(),
                         sinYaw,
                         cosYaw);
                 position = new Vec3(
@@ -167,16 +186,7 @@ public final class DinosaurTerrainSampler {
             }
             float supportWeight = gait.supportWeight(leg.id());
             FootTilt footTilt = valid && supportWeight > SAMPLE_EPSILON
-                    ? sampleFootTilt(
-                            level,
-                            collisionContext,
-                            origin,
-                            leg,
-                            config,
-                            sinYaw,
-                            cosYaw,
-                            position.y,
-                            observationBelow)
+                    ? groundFit.tilt()
                     : FootTilt.NONE;
             DinosaurTerrainSample sample = new DinosaurTerrainSample(
                     leg.id(),
@@ -329,6 +339,78 @@ public final class DinosaurTerrainSampler {
                 terrainRoll,
                 slope.pitchResolved(),
                 slope.rollResolved(),
+                false,
+                gait,
+                samples,
+                legs,
+                stability);
+    }
+
+    private static boolean isDescendingAirborne(LivingEntity entity) {
+        return !entity.onGround()
+                && !entity.isInWater()
+                && entity.getDeltaMovement().y < -0.01;
+    }
+
+    private static DinosaurProceduralPose sampleAirbornePose(
+            DinosaurProceduralConfig config,
+            Vec3 origin,
+            float bodyYawDegrees,
+            DinosaurGaitState gait,
+            DinosaurOrientationPose orientation,
+            double sinYaw,
+            double cosYaw) {
+        List<DinosaurTerrainSample> samples =
+                new ArrayList<>(config.legs().size());
+        List<DinosaurLegPose> legs =
+                new ArrayList<>(config.legs().size());
+        for (DinosaurLegRig leg : config.legs()) {
+            Vec3 nominalPosition = modelPointToWorld(
+                    origin,
+                    leg.modelFootCenterXOffset(),
+                    leg.modelFootCenterZOffset(),
+                    sinYaw,
+                    cosYaw);
+            samples.add(new DinosaurTerrainSample(
+                    leg.id(),
+                    leg.shortName(),
+                    nominalPosition,
+                    0.0,
+                    false,
+                    0.0F,
+                    0.0F,
+                    0.0F));
+            legs.add(DinosaurLegIkSolver.solveAirborneRetraction(
+                    config,
+                    leg,
+                    0.0F,
+                    0.0F,
+                    0.0F));
+        }
+        DinosaurStabilityAssessment stability =
+                DinosaurStabilityAssessment.notEvaluable(
+                        origin,
+                        0,
+                        DinosaurFootprintSupport.none());
+        return new DinosaurProceduralPose(
+                origin,
+                bodyYawDegrees,
+                orientation,
+                0.0F,
+                0.0F,
+                0.0F,
+                0.0F,
+                0.0F,
+                0.0F,
+                0.0F,
+                0.0F,
+                0.0F,
+                0.0F,
+                0.0F,
+                0.0F,
+                false,
+                false,
+                true,
                 gait,
                 samples,
                 legs,
@@ -364,9 +446,12 @@ public final class DinosaurTerrainSampler {
 
     /**
      * Terrain fitting describes real ground only. Once balance is already
-     * known to be lost, this separate response lowers the body toward the
+     * known to be lost, this separate response leans the body toward the
      * authoritative fall direction without allowing missing samples to
-     * masquerade as a terrain plane.
+     * masquerade as a terrain plane. The configured hybrid angles are hard
+     * anatomical limits, not recovery amplitudes: the actual correction is
+     * derived from how far the centre of mass lies beyond the tolerated
+     * support boundary and the dinosaur's scale-aware body height.
      */
     private static RecoveryLean calculateRecoveryLean(
             DinosaurProceduralConfig config,
@@ -380,6 +465,26 @@ public final class DinosaurTerrainSampler {
             return RecoveryLean.NONE;
         }
 
+        double signedMargin = stability.signedMarginBlocks();
+        if (!Double.isFinite(signedMargin)) {
+            // With no support polygon there is no meaningful corrective
+            // posture. Maximum-extension legs and the authoritative fall
+            // controller handle the unsupported state; forcing the torso to
+            // its angular limit here only creates a visual snap.
+            return RecoveryLean.NONE;
+        }
+        double outsideDistance = Math.max(
+                0.0,
+                -signedMargin
+                        - config.stability().toleratedOutsideDistance());
+        if (outsideDistance <= SAMPLE_EPSILON) {
+            return RecoveryLean.NONE;
+        }
+        double bodyHeight = Math.max(
+                SAMPLE_EPSILON,
+                config.bodyPivotHeight() - config.footContactHeight());
+        double requiredAngle = Math.atan2(outsideDistance, bodyHeight);
+
         double inverseLength = 1.0 / Math.sqrt(horizontalLengthSquared);
         double worldX = fallDirection.x * inverseLength;
         double worldZ = fallDirection.z * inverseLength;
@@ -389,8 +494,8 @@ public final class DinosaurTerrainSampler {
         double renderedModelX = cosYaw * worldX - sinYaw * worldZ;
         double modelZ = sinYaw * worldX + cosYaw * worldZ;
         return new RecoveryLean(
-                (float) (modelZ * config.maxHybridPitchRadians()),
-                (float) (-renderedModelX * config.maxHybridRollRadians()));
+                (float) (modelZ * requiredAngle),
+                (float) (-renderedModelX * requiredAngle));
     }
 
     private static DinosaurOrientationPose orientationPose(
@@ -402,10 +507,12 @@ public final class DinosaurTerrainSampler {
                 Mth.wrapDegrees(headYawDegrees - bodyYawDegrees),
                 -config.orientation().maxNeckYawDegrees(),
                 config.orientation().maxNeckYawDegrees());
+        // DinosaurEntity stores visual/GeckoLib pitch: positive is up. This
+        // is intentionally the inverse of vanilla's look-vector convention.
         float pitchDegrees = Mth.clamp(
                 headPitchDegrees,
-                -config.orientation().maxPitchUpDegrees(),
-                config.orientation().maxPitchDownDegrees());
+                -config.orientation().maxPitchDownDegrees(),
+                config.orientation().maxPitchUpDegrees());
         float yawRadians = (float) Math.toRadians(relativeYawDegrees);
         float pitchRadians = (float) Math.toRadians(pitchDegrees);
         return new DinosaurOrientationPose(
@@ -439,85 +546,14 @@ public final class DinosaurTerrainSampler {
         return Math.max(config.sampleBelow(), adaptiveDepth);
     }
 
-    private static GroundHit findBestGroundHit(
-            Level level,
-            CollisionContext collisionContext,
-            BlockPos.MutableBlockPos mutableBlockPos,
-            Vec3 origin,
-            DinosaurLegRig leg,
-            double contactPatchRadius,
-            double sinYaw,
-            double cosYaw,
-            double sampleAbove,
-            double sampleBelow) {
-        Vec3 nominalPoint = modelPointToWorld(
-                origin,
-                leg.modelXOffset(),
-                leg.modelZOffset(),
-                sinYaw,
-                cosYaw);
-        int minBlockX = Mth.floor(nominalPoint.x - contactPatchRadius);
-        int maxBlockX = Mth.floor(nominalPoint.x + contactPatchRadius);
-        int minBlockZ = Mth.floor(nominalPoint.z - contactPatchRadius);
-        int maxBlockZ = Mth.floor(nominalPoint.z + contactPatchRadius);
-        int startY = Mth.floor(origin.y + sampleAbove);
-        int endY = Mth.floor(origin.y - sampleBelow);
-        double radiusSquared = contactPatchRadius * contactPatchRadius;
-        GroundHit bestHit = null;
-
-        for (int blockX = minBlockX; blockX <= maxBlockX; blockX++) {
-            for (int blockZ = minBlockZ; blockZ <= maxBlockZ; blockZ++) {
-                if (!level.getChunkSource().hasChunk(blockX >> 4, blockZ >> 4)) {
-                    continue;
-                }
-
-                for (int blockY = startY; blockY >= endY; blockY--) {
-                    mutableBlockPos.set(blockX, blockY, blockZ);
-                    VoxelShape shape = level
-                            .getBlockState(mutableBlockPos)
-                            .getCollisionShape(level, mutableBlockPos, collisionContext);
-                    if (shape.isEmpty()) {
-                        continue;
-                    }
-
-                    for (AABB box : shape.toAabbs()) {
-                        double contactX = Mth.clamp(
-                                nominalPoint.x,
-                                blockX + box.minX,
-                                blockX + box.maxX);
-                        double contactZ = Mth.clamp(
-                                nominalPoint.z,
-                                blockZ + box.minZ,
-                                blockZ + box.maxZ);
-                        double distanceSquared =
-                                square(contactX - nominalPoint.x)
-                                        + square(contactZ - nominalPoint.z);
-                        if (distanceSquared > radiusSquared + SAMPLE_EPSILON) {
-                            continue;
-                        }
-
-                        double worldTop = blockY + box.maxY;
-                        if (worldTop > origin.y + sampleAbove + SAMPLE_EPSILON
-                                || worldTop < origin.y - sampleBelow - SAMPLE_EPSILON) {
-                            continue;
-                        }
-
-                        if (bestHit == null
-                                || worldTop > bestHit.position().y + SAMPLE_EPSILON
-                                || (Math.abs(worldTop - bestHit.position().y) <= SAMPLE_EPSILON
-                                        && distanceSquared < bestHit.distanceSquared())) {
-                            bestHit = new GroundHit(
-                                    new Vec3(contactX, worldTop, contactZ),
-                                    distanceSquared);
-                        }
-                    }
-                }
-            }
-        }
-        return bestHit;
-    }
-
-    private static FootTilt sampleFootTilt(
+    /**
+     * The centre ray is the sole source of contact truth. Extra probes may
+     * lift a rigid sole over geometry it genuinely overlaps, but they can
+     * neither invent support beside the foot nor keep a previous contact
+     * alive. A symmetric inner cross supplies visual tilt only when it agrees
+     * with the centre, avoiding unstable planes across unrelated voxel steps.
+     */
+    private static FootGroundFit sampleFootGround(
             Level level,
             CollisionContext collisionContext,
             Vec3 origin,
@@ -525,77 +561,237 @@ public final class DinosaurTerrainSampler {
             DinosaurProceduralConfig config,
             double sinYaw,
             double cosYaw,
-            double centerHeight,
-            double observationBelow) {
+            double sampleAbove,
+            double sampleBelow) {
         Vec3 center = modelPointToWorld(
                 origin,
-                leg.modelXOffset(),
-                leg.modelZOffset(),
+                leg.modelFootCenterXOffset(),
+                leg.modelFootCenterZOffset(),
                 sinYaw,
                 cosYaw);
         Vec3 lateralAxis = new Vec3(cosYaw, 0.0, -sinYaw);
         Vec3 longitudinalAxis = new Vec3(sinYaw, 0.0, cosYaw);
-        double verticalRange = Math.max(
-                1.0,
-                Math.min(observationBelow, leg.totalLength() * 0.35));
-        double maximumY = centerHeight + verticalRange;
-        double minimumY = centerHeight - verticalRange;
-
-        GroundHit lateralPositive = findGroundNearHeight(
+        double maximumY = origin.y + sampleAbove;
+        double minimumY = origin.y - sampleBelow;
+        Vec3 centerHit = findGroundNearHeight(
                 level,
                 collisionContext,
-                center.add(lateralAxis.scale(leg.footHalfWidth())),
+                center,
                 maximumY,
                 minimumY);
-        GroundHit lateralNegative = findGroundNearHeight(
-                level,
-                collisionContext,
-                center.add(lateralAxis.scale(-leg.footHalfWidth())),
-                maximumY,
-                minimumY);
-        GroundHit longitudinalPositive = findGroundNearHeight(
-                level,
-                collisionContext,
-                center.add(longitudinalAxis.scale(leg.footHalfLength())),
-                maximumY,
-                minimumY);
-        GroundHit longitudinalNegative = findGroundNearHeight(
-                level,
-                collisionContext,
-                center.add(longitudinalAxis.scale(-leg.footHalfLength())),
-                maximumY,
-                minimumY);
-
-        float roll = 0.0F;
-        if (lateralPositive != null && lateralNegative != null) {
-            roll = (float) Mth.clamp(
-                    Math.atan2(
-                            lateralPositive.position().y
-                                    - lateralNegative.position().y,
-                            leg.footHalfWidth() * 2.0),
-                    -config.maxFootRollRadians(),
-                    config.maxFootRollRadians());
+        if (centerHit == null) {
+            return null;
         }
 
-        float pitch = 0.0F;
-        if (longitudinalPositive != null && longitudinalNegative != null) {
-            pitch = (float) Mth.clamp(
-                    -Math.atan2(
-                            longitudinalPositive.position().y
-                                    - longitudinalNegative.position().y,
-                            leg.footHalfLength() * 2.0),
-                    -config.maxFootPitchRadians(),
-                    config.maxFootPitchRadians());
+        double lateralExtent = leg.footHalfWidth() * 0.95;
+        double longitudinalExtent = leg.footHalfLength() * 0.95;
+        int lateralSamples = footSampleCount(
+                leg.footHalfWidth() * 2.0,
+                config.contactPatchRadius());
+        int longitudinalSamples = footSampleCount(
+                leg.footHalfLength() * 2.0,
+                config.contactPatchRadius());
+        List<FootSurfaceSample> surfaceSamples =
+                new ArrayList<>(lateralSamples * longitudinalSamples + 1);
+        surfaceSamples.add(new FootSurfaceSample(0.0, 0.0, centerHit.y));
+
+        for (int lateralIndex = 0;
+                lateralIndex < lateralSamples;
+                lateralIndex++) {
+            double lateralFraction = sampleFraction(
+                    lateralIndex,
+                    lateralSamples);
+            double localX = lateralExtent * lateralFraction;
+            for (int longitudinalIndex = 0;
+                    longitudinalIndex < longitudinalSamples;
+                    longitudinalIndex++) {
+                double longitudinalFraction = sampleFraction(
+                        longitudinalIndex,
+                        longitudinalSamples);
+                double localZ = longitudinalExtent * longitudinalFraction;
+                Vec3 point = center
+                        .add(lateralAxis.scale(localX))
+                        .add(longitudinalAxis.scale(localZ));
+                Vec3 hit = findGroundNearHeight(
+                        level,
+                        collisionContext,
+                        point,
+                        maximumY,
+                        minimumY);
+                if (hit != null) {
+                    surfaceSamples.add(new FootSurfaceSample(
+                            localX,
+                            localZ,
+                            hit.y));
+                }
+            }
+        }
+
+        FootTilt tilt = sampleStableFootTilt(
+                level,
+                collisionContext,
+                center,
+                centerHit.y,
+                lateralAxis,
+                longitudinalAxis,
+                leg,
+                maximumY,
+                minimumY,
+                config.maxFootPitchRadians(),
+                config.maxFootRollRadians());
+        DinosaurRotationMath.Quaternion terrain =
+                DinosaurRotationMath.terrainOrientation(
+                        tilt.pitchRadians(),
+                        tilt.rollRadians());
+        Vec3 normal = terrain.rotate(new Vec3(0.0, 1.0, 0.0));
+        double lateralSlope = -normal.x / normal.y;
+        double longitudinalSlope = -normal.z / normal.y;
+
+        /*
+         * Lift the selected plane until it clears every observed collision
+         * point. Nearby probes affect clearance, never contact validity.
+         */
+        double centerHeight = Double.NEGATIVE_INFINITY;
+        for (FootSurfaceSample sample : surfaceSamples) {
+            centerHeight = Math.max(
+                    centerHeight,
+                    sample.height()
+                            - lateralSlope * sample.localX()
+                            - longitudinalSlope * sample.localZ());
+        }
+        return new FootGroundFit(
+                new Vec3(center.x, centerHeight, center.z),
+                tilt);
+    }
+
+    private static FootTilt sampleStableFootTilt(
+            Level level,
+            CollisionContext collisionContext,
+            Vec3 center,
+            double centerHeight,
+            Vec3 lateralAxis,
+            Vec3 longitudinalAxis,
+            DinosaurLegRig leg,
+            double maximumY,
+            double minimumY,
+            float maximumPitch,
+            float maximumRoll) {
+        double lateralProbe = leg.footHalfWidth() * 0.65;
+        double longitudinalProbe = leg.footHalfLength() * 0.65;
+        if (lateralProbe <= SAMPLE_EPSILON
+                || longitudinalProbe <= SAMPLE_EPSILON) {
+            return FootTilt.NONE;
+        }
+
+        Vec3 left = findGroundNearHeight(
+                level,
+                collisionContext,
+                center.add(lateralAxis.scale(-lateralProbe)),
+                maximumY,
+                minimumY);
+        Vec3 right = findGroundNearHeight(
+                level,
+                collisionContext,
+                center.add(lateralAxis.scale(lateralProbe)),
+                maximumY,
+                minimumY);
+        Vec3 back = findGroundNearHeight(
+                level,
+                collisionContext,
+                center.add(longitudinalAxis.scale(-longitudinalProbe)),
+                maximumY,
+                minimumY);
+        Vec3 front = findGroundNearHeight(
+                level,
+                collisionContext,
+                center.add(longitudinalAxis.scale(longitudinalProbe)),
+                maximumY,
+                minimumY);
+        if (left == null || right == null || back == null || front == null) {
+            return FootTilt.NONE;
+        }
+
+        double lateralCenter = (left.y + right.y) * 0.5;
+        double longitudinalCenter = (back.y + front.y) * 0.5;
+        if (Math.abs(lateralCenter - centerHeight)
+                        > FOOT_PLANE_CENTER_TOLERANCE
+                || Math.abs(longitudinalCenter - centerHeight)
+                        > FOOT_PLANE_CENTER_TOLERANCE) {
+            return FootTilt.NONE;
+        }
+
+        return limitCombinedFootTilt(
+                (right.y - left.y) / (lateralProbe * 2.0),
+                (front.y - back.y) / (longitudinalProbe * 2.0),
+                maximumPitch,
+                maximumRoll);
+    }
+
+    private static int footSampleCount(
+            double fullExtent,
+            double maximumProbeSpacing) {
+        if (maximumProbeSpacing <= SAMPLE_EPSILON) {
+            return 3;
+        }
+        return Mth.clamp(
+                (int) Math.ceil(fullExtent / maximumProbeSpacing) + 1,
+                3,
+                5);
+    }
+
+    private static double sampleFraction(int index, int count) {
+        return count <= 1
+                ? 0.0
+                : -1.0 + 2.0 * index / (count - 1.0);
+    }
+
+    private static FootTilt limitCombinedFootTilt(
+            double lateralSlope,
+            double longitudinalSlope,
+            float maximumPitch,
+            float maximumRoll) {
+        float roll = maximumRoll <= 0.0F
+                ? 0.0F
+                : (float) Mth.clamp(
+                        Math.atan(lateralSlope),
+                        -maximumRoll,
+                        maximumRoll);
+        float pitch = maximumPitch <= 0.0F
+                ? 0.0F
+                : (float) Mth.clamp(
+                        Math.atan(-longitudinalSlope * Math.cos(roll)),
+                        -maximumPitch,
+                        maximumPitch);
+
+        double normalizedPitch = maximumPitch <= 0.0F
+                ? 0.0
+                : pitch / maximumPitch;
+        double normalizedRoll = maximumRoll <= 0.0F
+                ? 0.0
+                : roll / maximumRoll;
+        double combined = Math.sqrt(
+                normalizedPitch * normalizedPitch
+                        + normalizedRoll * normalizedRoll);
+        if (combined > 1.0) {
+            pitch /= (float) combined;
+            roll /= (float) combined;
         }
         return new FootTilt(pitch, roll);
     }
 
-    private static GroundHit findGroundNearHeight(
+    private static Vec3 findGroundNearHeight(
             Level level,
             CollisionContext collisionContext,
             Vec3 point,
             double maximumY,
             double minimumY) {
+        int blockX = Mth.floor(point.x);
+        int blockZ = Mth.floor(point.z);
+        if (!level.getChunkSource().hasChunk(
+                blockX >> 4,
+                blockZ >> 4)) {
+            return null;
+        }
         HitResult hit = level.clip(new ClipContext(
                 new Vec3(point.x, maximumY, point.z),
                 new Vec3(point.x, minimumY, point.z),
@@ -604,7 +800,7 @@ public final class DinosaurTerrainSampler {
                 collisionContext));
         return hit.getType() == HitResult.Type.MISS
                 ? null
-                : new GroundHit(hit.getLocation(), 0.0);
+                : hit.getLocation();
     }
 
     private static DinosaurFootprintSupport sampleFootprintSupport(
@@ -706,10 +902,6 @@ public final class DinosaurTerrainSampler {
                 origin.x + cosYaw * renderedModelX + sinYaw * modelZ,
                 origin.y,
                 origin.z - sinYaw * renderedModelX + cosYaw * modelZ);
-    }
-
-    private static double square(double value) {
-        return value * value;
     }
 
     private static SlopeEstimate estimateTerrainSlope(
@@ -845,8 +1037,12 @@ public final class DinosaurTerrainSampler {
                 levelLegs,
                 terrainPitch,
                 false);
+        float adaptiveSlopeShare = Mth.lerp(
+                activation,
+                config.bodyTiltSlopeShare(),
+                1.0F);
         return Mth.clamp(
-                terrainPitch * config.bodyTiltSlopeShare() * activation,
+                terrainPitch * adaptiveSlopeShare * activation,
                 -config.maxHybridPitchRadians(),
                 config.maxHybridPitchRadians());
     }
@@ -860,10 +1056,14 @@ public final class DinosaurTerrainSampler {
                 levelLegs,
                 terrainRoll,
                 true);
+        float adaptiveSlopeShare = Mth.lerp(
+                activation,
+                config.bodyTiltSlopeShare(),
+                1.0F);
         // GeckoLib negates model X, so a high anatomical left side needs
         // negative Z rotation.
         return Mth.clamp(
-                -terrainRoll * config.bodyTiltSlopeShare() * activation,
+                -terrainRoll * adaptiveSlopeShare * activation,
                 -config.maxHybridRollRadians(),
                 config.maxHybridRollRadians());
     }
@@ -926,7 +1126,13 @@ public final class DinosaurTerrainSampler {
         return activation * activation * (3.0F - 2.0F * activation);
     }
 
-    private record GroundHit(Vec3 position, double distanceSquared) {
+    private record FootGroundFit(Vec3 position, FootTilt tilt) {
+    }
+
+    private record FootSurfaceSample(
+            double localX,
+            double localZ,
+            double height) {
     }
 
     private record FootTilt(float pitchRadians, float rollRadians) {

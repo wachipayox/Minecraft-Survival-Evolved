@@ -116,9 +116,9 @@ El renderer se registrará solo en código cliente y saldrá inmediatamente si e
 Se crearán de forma incremental, no todos en la siguiente fase:
 
 - `com/wachi/mse/registry/MseEntities.java`
-- `com/wachi/mse/entity/dinosaur/PrototypeDinosaurEntity.java`
+- `com/wachi/mse/entity/dinosaur/DinosaurEntity.java`
 - `com/wachi/mse/entity/dinosaur/config/DinosaurProceduralConfig.java`
-- `com/wachi/mse/entity/dinosaur/config/DinosaurBoneNames.java`
+- `body_bone` dentro del perfil de especie del datapack
 - `com/wachi/mse/entity/dinosaur/control/DinosaurBodyRotationControl.java`
 - `com/wachi/mse/entity/dinosaur/control/DinosaurMoveControl.java`, solo si la puerta de giro lo exige
 - `com/wachi/mse/entity/dinosaur/part/DinosaurPartEntity.java`
@@ -130,7 +130,7 @@ Se crearán de forma incremental, no todos en la siguiente fase:
 - `com/wachi/mse/entity/dinosaur/procedural/DinosaurTerrainSample.java`
 - `com/wachi/mse/client/animation/DinosaurProceduralAnimator.java`
 - `com/wachi/mse/client/model/PrototypeDinosaurModel.java`
-- `com/wachi/mse/client/renderer/PrototypeDinosaurRenderer.java`
+- `com/wachi/mse/client/renderer/DinosaurRenderer.java`
 - `com/wachi/mse/client/debug/DinosaurDebugRenderer.java`
 - `com/wachi/mse/client/MseClientEvents.java`
 - recursos del prototipo bajo `assets/mc_evolved/`
@@ -204,4 +204,8 @@ entidad se reutilizará antes de añadir nuevos datos sincronizados.
 
 ## Primer cambio mínimo siguiente
 
-Crear únicamente `MseEntities`, `PrototypeDinosaurEntity`, su registro de atributos y un renderer GeckoLib con idle/walk. El objetivo será poder invocar una entidad convencional, sin terreno, cuello procedural ni multipartes, y verificar el modelo y los nombres reales de sus huesos antes de construir el sistema reutilizable.
+Crear únicamente `MseEntities`, una especie concreta basada en
+`DinosaurEntity`, su registro de atributos y un renderer GeckoLib con
+idle/walk. El objetivo será poder invocar una entidad convencional, sin
+terreno, cuello procedural ni multipartes, y verificar el modelo y los nombres
+reales de sus huesos antes de construir el sistema reutilizable.

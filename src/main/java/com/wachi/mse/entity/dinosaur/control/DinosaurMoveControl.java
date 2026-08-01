@@ -153,7 +153,9 @@ public final class DinosaurMoveControl extends MoveControl {
         captureDistanceSinceLastControlTick();
         boolean normalizeForwardInput =
                 hasAutonomousForwardRequest();
-        if (this.operation != Operation.WAIT) {
+        if (this.operation == Operation.MOVE_TO) {
+            tickMoveToWithoutJump();
+        } else if (this.operation != Operation.WAIT) {
             super.tick();
         } else if (canPerformLookTurn()) {
             tickLookTurn();
@@ -180,6 +182,35 @@ public final class DinosaurMoveControl extends MoveControl {
              */
             this.mob.setZza(1.0F);
         }
+    }
+
+    /**
+     * Preserves vanilla's requested speed and steering but leaves vertical
+     * traversal to Entity's collision step-up. Vanilla MoveControl calls the
+     * jump controller whenever a solid block is ahead, producing a jump even
+     * when maxUpStep can climb it cleanly.
+     */
+    private void tickMoveToWithoutJump() {
+        this.operation = Operation.WAIT;
+        double x = this.wantedX - this.mob.getX();
+        double y = this.wantedY - this.mob.getY();
+        double z = this.wantedZ - this.mob.getZ();
+        if (x * x + y * y + z * z < MIN_SPEED_SQR) {
+            this.mob.setZza(0.0F);
+            return;
+        }
+
+        float targetYaw = (float) (
+                Mth.atan2(z, x) * 180.0F / Math.PI)
+                - 90.0F;
+        this.mob.setYRot(this.rotlerp(
+                this.mob.getYRot(),
+                targetYaw,
+                90.0F));
+        this.mob.setSpeed((float) (
+                this.speedModifier
+                        * this.mob.getAttributeValue(
+                                Attributes.MOVEMENT_SPEED)));
     }
 
     @Override

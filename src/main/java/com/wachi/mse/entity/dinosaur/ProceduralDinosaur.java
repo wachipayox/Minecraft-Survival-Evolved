@@ -11,4 +11,9 @@ public interface ProceduralDinosaur {
     DinosaurProceduralConfig proceduralConfig();
 
     DinosaurProceduralPose authoritativeProceduralPose();
+
+    /**
+     * Unwrapped locomotion cycles accumulated from real world displacement.
+     */
+    double gaitCyclePosition(float partialTick);
 }

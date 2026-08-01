@@ -28,7 +28,8 @@ public record DinosaurProfile(
         Gait gait,
         Orientation orientation,
         Terrain terrain,
-        LegMotion legMotion) {
+        LegMotion legMotion,
+        boolean canBeWalkedOn) {
     public static final Codec<DinosaurProfile> CODEC =
             RecordCodecBuilder.create(instance -> instance.group(
                     Identifier.CODEC.fieldOf("model")
@@ -70,7 +71,9 @@ public record DinosaurProfile(
                     LegMotion.CODEC.optionalFieldOf(
                                     "leg_motion",
                                     LegMotion.DEFAULT)
-                            .forGetter(DinosaurProfile::legMotion)
+                            .forGetter(DinosaurProfile::legMotion),
+                    Codec.BOOL.optionalFieldOf("can_be_walked_on", false)
+                            .forGetter(DinosaurProfile::canBeWalkedOn)
             ).apply(instance, DinosaurProfile::new));
 
     public DinosaurProfile {
@@ -206,17 +209,55 @@ public record DinosaurProfile(
             Vec3 hip = skeleton.bone(this.upperBone).pivot();
             Vec3 knee = skeleton.bone(this.lowerBone).pivot();
             Vec3 foot = skeleton.bone(this.footBone).pivot();
-            DinosaurSkeletonConfig.BoneBox footBox = skeleton.hitboxParts()
+            List<DinosaurSkeletonConfig.BoneBox> footBoxes = skeleton.hitboxParts()
                     .stream()
                     .flatMap(part -> part.boxes().stream())
                     .filter(box -> box.boneName().equals(this.footBone))
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "No hitbox box exists for foot bone " + this.footBone));
+                    .toList();
+            if (footBoxes.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "No hitbox box exists for foot bone " + this.footBone);
+            }
+            Vec3 boxMinimum = new Vec3(
+                    footBoxes.stream()
+                            .mapToDouble(box -> box.minimum().x)
+                            .min()
+                            .orElseThrow(),
+                    footBoxes.stream()
+                            .mapToDouble(box -> box.minimum().y)
+                            .min()
+                            .orElseThrow(),
+                    footBoxes.stream()
+                            .mapToDouble(box -> box.minimum().z)
+                            .min()
+                            .orElseThrow());
+            Vec3 boxMaximum = new Vec3(
+                    footBoxes.stream()
+                            .mapToDouble(box -> box.maximum().x)
+                            .max()
+                            .orElseThrow(),
+                    footBoxes.stream()
+                            .mapToDouble(box -> box.maximum().y)
+                            .max()
+                            .orElseThrow(),
+                    footBoxes.stream()
+                            .mapToDouble(box -> box.maximum().z)
+                            .max()
+                            .orElseThrow());
+            // GeckoLib mirrors Blockbench X while baking. Store the box in
+            // the same local rendered coordinate system used by the solver.
+            Vec3 localMinimum = new Vec3(
+                    -(boxMaximum.x - foot.x),
+                    boxMinimum.y - foot.y,
+                    boxMinimum.z - foot.z);
+            Vec3 localMaximum = new Vec3(
+                    -(boxMinimum.x - foot.x),
+                    boxMaximum.y - foot.y,
+                    boxMaximum.z - foot.z);
             double halfWidth =
-                    (footBox.maximum().x - footBox.minimum().x) * 0.5;
+                    (localMaximum.x - localMinimum.x) * 0.5;
             double halfLength =
-                    (footBox.maximum().z - footBox.minimum().z) * 0.5;
+                    (localMaximum.z - localMinimum.z) * 0.5;
             float bend = this.kneeBend == 0.0F
                     ? (foot.z <= 0.0 ? 1.0F : -1.0F)
                     : Math.signum(this.kneeBend);
@@ -240,6 +281,8 @@ public record DinosaurProfile(
                     foot.y,
                     halfWidth,
                     halfLength,
+                    localMinimum,
+                    localMaximum,
                     bend,
                     timing.liftOff,
                     timing.apex,

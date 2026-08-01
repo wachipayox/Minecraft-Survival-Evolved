@@ -4,12 +4,13 @@
     "idle": "",
     "walk": ""
   },
+  "can_be_walked_on": true,
   "stats": {
     "max_health": 40.0,
     "movement_speed": 0.2,
     "attack_damage": 6.0,
     "follow_range": 24.0,
-    "step_height": 0.6,
+    "step_height": 1.0,
     "riding_camera_distance": 4.0
   },
   "orientation": {
@@ -45,7 +46,7 @@
     "max_reach": 0.985,
     "body_tilt_start": 0.6,
     "body_tilt_slope_share": 0.35,
-    "max_hybrid_pitch": 10.0,
+    "max_hybrid_pitch": 45.0,
     "max_hybrid_roll": 7.0,
     "max_foot_pitch": 25.0,
     "max_foot_roll": 25.0,
@@ -135,7 +136,7 @@
     }
   ],
   "gait": {
-    "stride_length": 3.2,
+    "stride_length": 1,
     "animation_length": 2.0,
     "full_activity_speed": 0.6,
     "contact_blend_fraction": 0.04,

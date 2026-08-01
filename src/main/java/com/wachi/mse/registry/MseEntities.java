@@ -1,9 +1,10 @@
 package com.wachi.mse.registry;
 
 import com.wachi.mse.MseMod;
-import com.wachi.mse.entity.dino.DinoCaprinoEntity;
+import com.wachi.mse.test.dino.DinoEntity;
 import com.wachi.mse.entity.dinosaur.DinosaurEntity;
 import com.wachi.mse.entity.dinosaur.PrototypeDinosaurEntity;
+import com.wachi.mse.test.dino.caprino.CaprinoEntity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
@@ -24,11 +25,11 @@ public final class MseEntities {
                             .clientTrackingRange(12)
             );
 
-    public static final DeferredHolder<EntityType<?>, EntityType<DinoCaprinoEntity>>
-            DINO_CAPRINO = ENTITY_TYPES.registerEntityType(
-                "dino_caprino", DinoCaprinoEntity::new,
+    public static final DeferredHolder<EntityType<?>, EntityType<CaprinoEntity>>
+            DINO = ENTITY_TYPES.registerEntityType(
+                "caprino", CaprinoEntity::new,
             MobCategory.CREATURE, builder -> builder
-                    .sized(4F, 4F)
+                    .sized(1F, 1F)
     ) ;
 
     public static void registerAttributes(EntityAttributeCreationEvent event) {
@@ -37,8 +38,8 @@ public final class MseEntities {
                 DinosaurEntity.createAttributes().build()
         );
         event.put(
-                DINO_CAPRINO.get(),
-                DinoCaprinoEntity.createAttributes().build()
+                DINO.get(),
+                DinoEntity.createAttributes().build()
         );
     }
 }

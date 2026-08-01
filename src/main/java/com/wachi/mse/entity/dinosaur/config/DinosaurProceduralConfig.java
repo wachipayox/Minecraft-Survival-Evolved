@@ -108,6 +108,8 @@ public record DinosaurProceduralConfig(
                         leg.footPivotHeight() * scale,
                         leg.footHalfWidth() * scale,
                         leg.footHalfLength() * scale,
+                        leg.footLocalMinimum().scale(scale),
+                        leg.footLocalMaximum().scale(scale),
                         leg.kneeBendDirection(),
                         leg.liftOffPhase(),
                         leg.apexPhase(),

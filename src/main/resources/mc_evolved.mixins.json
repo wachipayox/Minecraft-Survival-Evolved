@@ -3,9 +3,13 @@
   "minVersion": "0.8.7",
   "package": "com.wachi.mse.mixin",
   "compatibilityLevel": "JAVA_25",
-  "mixins": [],
+  "mixins": [
+    "world.LevelChunkMixin"
+  ],
   "client": [
     "client.EntityHitboxDebugRendererMixin"
+  ],
+  "server": [
   ],
   "injectors": {
     "defaultRequire": 1

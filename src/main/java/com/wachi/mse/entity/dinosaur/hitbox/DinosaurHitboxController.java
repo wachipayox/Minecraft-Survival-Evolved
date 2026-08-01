@@ -6,39 +6,54 @@ import com.wachi.mse.entity.dinosaur.config.DinosaurProceduralConfig;
 import com.wachi.mse.entity.dinosaur.config.DinosaurSkeletonConfig;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurProceduralPose;
 import java.util.List;
+import java.util.ArrayList;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 /**
  * Updates a bounded number of logical body parts from the authoritative pose.
  *
- * <p>Idle parts update every second tick, staggered by entity ID. Active
- * attacks update every tick because their volumes move quickly.</p>
+ * <p>Parts update every tick because they are physical push/collision volumes,
+ * not only occasional combat broad-phase entries.</p>
  */
 public final class DinosaurHitboxController {
     private static final int IDLE_UPDATE_INTERVAL_TICKS = 2;
+    private static final int SUPPORTED_ENTITY_GRACE_TICKS = 4;
+    private static final double SUPPORT_BELOW_TOLERANCE = 0.08;
     private static final double PLAYER_RAY_TOLERANCE_BLOCKS = 0.10;
 
     private final DinosaurEntity parent;
     private final DinosaurPartEntity[] subParts;
+    private final DinosaurTransportController transportController;
     private AABB visualBounds;
+    private DinosaurPoseTransforms.PoseSnapshot appliedPose;
+    private int continuousUpdateUntilTick = Integer.MIN_VALUE;
 
     public DinosaurHitboxController(
             DinosaurEntity parent,
             DinosaurSkeletonConfig skeleton
     ) {
         this.parent = parent;
-        this.subParts = new DinosaurPartEntity[skeleton.hitboxParts().size()];
-
-        for (int index = 0; index < this.subParts.length; index++) {
-            this.subParts[index] = new DinosaurPartEntity(
-                    parent,
-                    skeleton.hitboxParts().get(index)
-            );
+        List<DinosaurPartEntity> physicalParts = new ArrayList<>();
+        for (DinosaurSkeletonConfig.HitboxPart logicalPart
+                : skeleton.hitboxParts()) {
+            for (DinosaurSkeletonConfig.BoneBox box
+                    : logicalPart.boxes()) {
+                physicalParts.add(new DinosaurPartEntity(
+                        parent,
+                        logicalPart,
+                        box,
+                        physicalParts.size()));
+            }
         }
+        this.subParts = physicalParts.toArray(
+                DinosaurPartEntity[]::new);
+        this.transportController =
+                new DinosaurTransportController(parent);
         this.visualBounds = parent.getBoundingBox();
     }
 
@@ -48,6 +63,73 @@ public final class DinosaurHitboxController {
 
     public AABB visualBounds() {
         return this.visualBounds;
+    }
+
+    public boolean isTransportSupported(Entity entity) {
+        return this.transportController.isSupported(entity);
+    }
+
+    public boolean isActivelyTransporting(Entity entity) {
+        return this.transportController.isActivelyTransporting(
+                entity);
+    }
+
+    public boolean preciselySupportsAny(Entity entity) {
+        DinosaurPoseTransforms.PoseSnapshot snapshot =
+                this.appliedPose != null
+                        ? this.appliedPose
+                        : poseSnapshot();
+        AABB entityBounds = entity.getBoundingBox();
+        for (DinosaurPartEntity part : this.subParts) {
+            if (DinosaurPoseTransforms.hitboxBoxSupportPoint(
+                            snapshot,
+                            part.boxConfig(),
+                            entityBounds,
+                            SUPPORT_BELOW_TOLERANCE,
+                            SUPPORT_BELOW_TOLERANCE)
+                    != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean preciselySupports(
+            DinosaurPartEntity part,
+            AABB entityBounds) {
+        DinosaurPoseTransforms.PoseSnapshot snapshot =
+                this.appliedPose != null
+                        ? this.appliedPose
+                        : poseSnapshot();
+        return DinosaurPoseTransforms.hitboxBoxSupportPoint(
+                        snapshot,
+                        part.boxConfig(),
+                        entityBounds,
+                        SUPPORT_BELOW_TOLERANCE,
+                        0.04)
+                != null;
+    }
+
+    public boolean preciselyIntersects(
+            DinosaurPartEntity part,
+            AABB bounds) {
+        return DinosaurPoseTransforms.hitboxBoxIntersectsAabb(
+                poseSnapshot(),
+                part.boxConfig(),
+                bounds);
+    }
+
+    public Vec3 preciseTopSurface(
+            DinosaurPartEntity part,
+            AABB entityBounds) {
+        DinosaurPoseTransforms.PoseSnapshot snapshot =
+                this.appliedPose != null
+                        ? this.appliedPose
+                        : poseSnapshot();
+        return DinosaurPoseTransforms.hitboxBoxTopSurfacePoint(
+                snapshot,
+                part.boxConfig(),
+                entityBounds);
     }
 
     /**
@@ -107,14 +189,35 @@ public final class DinosaurHitboxController {
                         .isPresent());
     }
 
-    private boolean shouldUpdateSubParts(){
-        return (this.parent.tickCount + this.parent.getId()) % IDLE_UPDATE_INTERVAL_TICKS == 0;
-    }
-
     public void tick() {
-        boolean attacking = this.parent.activeAttack() != null;
-
-        if (!attacking && !shouldUpdateSubParts()) return;
+        if (!this.parent.level().isClientSide()
+                && this.parent.tickCount % 20 == 0) {
+            long gameTime = this.parent.level().getGameTime();
+            for (DinosaurPartEntity part : this.subParts) {
+                part.purgeExpiredSupportVetoes(gameTime);
+            }
+        }
+        List<DinosaurTransportController.SupportContact> supportContacts =
+                this.appliedPose == null
+                        ? List.of()
+                        : this.transportController.findContacts(
+                                this.subParts,
+                                this.appliedPose,
+                                this.visualBounds);
+        if (!supportContacts.isEmpty()) {
+            this.continuousUpdateUntilTick =
+                    this.parent.tickCount + SUPPORTED_ENTITY_GRACE_TICKS;
+        }
+        boolean requiresContinuousUpdates =
+                this.parent.activeAttack() != null
+                        || this.parent.tickCount
+                                <= this.continuousUpdateUntilTick;
+        boolean periodicUpdate =
+                (this.parent.tickCount + this.parent.getId())
+                        % IDLE_UPDATE_INTERVAL_TICKS == 0;
+        if (!requiresContinuousUpdates && !periodicUpdate) {
+            return;
+        }
 
         DinosaurProceduralConfig config = this.parent.proceduralConfig();
         DinosaurProceduralPose pose = this.parent.authoritativeProceduralPose();
@@ -132,13 +235,37 @@ public final class DinosaurHitboxController {
 
         AABB union = this.parent.getBoundingBox();
         for (DinosaurPartEntity part : this.subParts) {
-            AABB bounds = DinosaurPoseTransforms.hitboxPartBounds(
+            AABB bounds = DinosaurPoseTransforms.hitboxBoxBounds(
                     snapshot,
-                    part.partConfig());
+                    part.boxConfig());
             part.setPartBounds(bounds);
             union = union.minmax(bounds);
         }
         this.visualBounds = union;
+        if (this.appliedPose != null && !supportContacts.isEmpty()) {
+            this.transportController.transport(
+                    supportContacts,
+                    this.appliedPose,
+                    snapshot);
+        }
+        this.appliedPose = snapshot;
+        if (!this.parent.level().isClientSide()) {
+            this.resolveEmbeddedPlayers();
+        }
+    }
+
+    private void resolveEmbeddedPlayers() {
+        for (Entity candidate : this.parent.level().getEntities(
+                this.parent,
+                this.visualBounds,
+                entity -> entity instanceof ServerPlayer)) {
+            ServerPlayer player = (ServerPlayer) candidate;
+            for (DinosaurPartEntity part : this.subParts) {
+                if (part.pushAboveIfEmbedded(player)) {
+                    break;
+                }
+            }
+        }
     }
 
     private DinosaurPoseTransforms.PoseSnapshot poseSnapshot() {

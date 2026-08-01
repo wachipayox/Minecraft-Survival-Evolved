@@ -89,7 +89,7 @@ prototipo.
 La interfaz `ProceduralDinosaur` hace que cada entidad entregue su propia
 configuración. El sampler, el estado de marcha, el solver, el suavizado y el
 almacén de depuración operan sobre `LivingEntity` y sobre la lista
-configurada, de modo que no dependen de `PrototypeDinosaurEntity`.
+configurada, de modo que no dependen de una especie concreta.
 
 La configuración actual del prototipo usa:
 
@@ -282,7 +282,7 @@ revisión visual del rig no exigió modificar ni reexportar el `.bbmodel`.
 
 ## Integración con GeckoLib
 
-`PrototypeDinosaurRenderer.addRenderData` muestrea y suaviza la pose.
+`DinosaurRenderer.addRenderData` muestrea y suaviza la pose.
 `adjustModelBonesForRender` se ejecuta después de las animaciones JSON:
 
 1. suma traslación Y, pitch y roll residual al hueso `body`;

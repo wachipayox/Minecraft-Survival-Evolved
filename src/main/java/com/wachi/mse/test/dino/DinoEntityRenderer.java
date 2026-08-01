@@ -1,12 +1,12 @@
-package com.wachi.mse.entity.dino;
+package com.wachi.mse.test.dino;
 
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 
-public class DinoCaprinoEntityRenderer extends EntityRenderer<DinoCaprinoEntity, LivingEntityRenderState> {
+public class DinoEntityRenderer extends EntityRenderer<DinoEntity, LivingEntityRenderState> {
 
-    public DinoCaprinoEntityRenderer(EntityRendererProvider.Context context) {
+    public DinoEntityRenderer(EntityRendererProvider.Context context) {
         super(context);
     }
 

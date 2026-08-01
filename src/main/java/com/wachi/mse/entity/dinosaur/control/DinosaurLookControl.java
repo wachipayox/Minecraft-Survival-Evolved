@@ -46,10 +46,7 @@ public final class DinosaurLookControl extends LookControl {
                 bodyYaw,
                 this.config.maxNeckYawDegrees());
 
-        float targetPitch = Mth.clamp(
-                -controller.getXRot(),
-                -this.config.maxPitchUpDegrees(),
-                this.config.maxPitchDownDegrees());
+        float targetPitch = this.toVisualPitch(controller.getXRot());
         this.mob.setXRot(this.rotateTowards(
                 this.mob.getXRot(),
                 targetPitch,
@@ -100,10 +97,7 @@ public final class DinosaurLookControl extends LookControl {
         }
 
         float targetPitch = desiredPitch
-                .map(value -> Mth.clamp(
-                        value,
-                        -this.config.maxPitchUpDegrees(),
-                        this.config.maxPitchDownDegrees()))
+                .map(this::toVisualPitch)
                 .orElse(0.0F);
         float pitchSpeed = desiredPitch.isPresent()
                 ? Math.min(this.xMaxRotAngle, this.config.headPitchSpeedDegreesPerTick())
@@ -112,6 +106,19 @@ public final class DinosaurLookControl extends LookControl {
                 this.mob.getXRot(),
                 targetPitch,
                 pitchSpeed));
+    }
+
+    /**
+     * Minecraft pitch is negative when looking up, while the GeckoLib
+     * dinosaur rig uses positive X rotation for an upward neck bend. Keep
+     * that convention conversion in one place so ridden and AI look targets
+     * cannot silently diverge again.
+     */
+    private float toVisualPitch(float minecraftPitch) {
+        return Mth.clamp(
+                -minecraftPitch,
+                -this.config.maxPitchDownDegrees(),
+                this.config.maxPitchUpDegrees());
     }
 
     private void updateLookTurnRequest(

@@ -1,5 +1,7 @@
 package com.wachi.mse.entity.dinosaur.config;
 
+import net.minecraft.world.phys.Vec3;
+
 /**
  * Complete immutable description of one independently solved leg.
  *
@@ -21,6 +23,8 @@ public record DinosaurLegRig(
         double footPivotHeight,
         double footHalfWidth,
         double footHalfLength,
+        Vec3 footLocalMinimum,
+        Vec3 footLocalMaximum,
         float kneeBendDirection,
         float liftOffPhase,
         float apexPhase,
@@ -40,7 +44,12 @@ public record DinosaurLegRig(
         }
         if (!(hipHeight > kneeHeight && kneeHeight > footPivotHeight)
                 || footHalfWidth <= 0.0
-                || footHalfLength <= 0.0) {
+                || footHalfLength <= 0.0
+                || footLocalMinimum == null
+                || footLocalMaximum == null
+                || footLocalMaximum.x <= footLocalMinimum.x
+                || footLocalMaximum.y <= footLocalMinimum.y
+                || footLocalMaximum.z <= footLocalMinimum.z) {
             throw new IllegalArgumentException("Leg pivots must descend from hip to foot");
         }
         if (kneeBendDirection != -1.0F && kneeBendDirection != 1.0F) {
@@ -80,6 +89,30 @@ public record DinosaurLegRig(
      */
     public double renderedModelXOffset() {
         return -this.modelXOffset;
+    }
+
+    /**
+     * Center of the actual foot geometry in Blockbench model coordinates.
+     */
+    public double modelFootCenterXOffset() {
+        return this.modelXOffset
+                - (this.footLocalMinimum.x + this.footLocalMaximum.x) * 0.5;
+    }
+
+    public double modelFootCenterZOffset() {
+        return this.modelZOffset
+                + (this.footLocalMinimum.z + this.footLocalMaximum.z) * 0.5;
+    }
+
+    public Vec3 renderedFootPivotFromCenter() {
+        return new Vec3(
+                -(this.footLocalMinimum.x + this.footLocalMaximum.x) * 0.5,
+                0.0,
+                -(this.footLocalMinimum.z + this.footLocalMaximum.z) * 0.5);
+    }
+
+    public double neutralFootPivotClearance() {
+        return Math.max(0.0, -this.footLocalMinimum.y);
     }
 
     private static boolean normalizedPhase(float phase) {

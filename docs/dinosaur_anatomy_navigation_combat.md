@@ -72,7 +72,7 @@ Los ejemplares normales conservan el A* de Minecraft con un coste adicional
 por cambios bruscos de dirección y seguimiento de curva mediante
 pure-pursuit. El presupuesto de nodos es configurable por especie.
 
-Un ejemplar cuyo `modelScale` supera el umbral configurado usa un planificador
+Un ejemplar cuya escala de atributo supera el umbral configurado usa un planificador
 local reactivo. En vez de pedir a la cuadrícula vanilla que resuelva una caja
 gigante, prueba un abanico de direcciones con el AABB físico real, su
 `step_height` y soporte al final de la maniobra. Se recalcula cada tres ticks

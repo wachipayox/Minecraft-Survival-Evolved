@@ -10,18 +10,24 @@ import com.wachi.mse.entity.dinosaur.procedural.DinosaurLegIkSolver;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurLegPose;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurOrientationPose;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurProceduralPose;
+import com.wachi.mse.entity.dinosaur.procedural.DinosaurRotationMath;
+import com.wachi.mse.entity.dinosaur.procedural.DinosaurRotationMath.Quaternion;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurTerrainSample;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
 
 public final class DinosaurProceduralAnimator {
     private static final double MAX_SMOOTHING_GAP_TICKS = 5.0;
     private static final float MODEL_UNITS_PER_BLOCK = 16.0F;
+    private static final float FOOT_TILT_CONTACT_WEIGHT = 0.65F;
+    private static final float MAX_FOOT_ANGULAR_SPEED_RADIANS_PER_SECOND =
+            (float) Math.toRadians(240.0);
 
     private final Map<LivingEntity, SmoothedPose> smoothedPoses = new WeakHashMap<>();
 
@@ -33,18 +39,17 @@ public final class DinosaurProceduralAnimator {
         double renderTime = entity.level().getGameTime() + partialTick;
         SmoothedPose previous = this.smoothedPoses.get(entity);
         if (previous == null
+                || Float.compare(previous.scale(), config.scale()) != 0
                 || renderTime < previous.renderTime()
                 || renderTime - previous.renderTime() > MAX_SMOOTHING_GAP_TICKS) {
             float bodyTranslationY =
-                    DinosaurLegIkSolver.constrainBodyTranslationY(
+                    target.targetBodyTranslationYBlocks();
+            Map<String, SmoothedFootTilt> footTilts =
+                    updateFootTilts(
+                            null,
+                            target,
                             config,
-                            target.samples(),
-                            target.legs(),
-                            target.targetPitchRadians()
-                                    - target.targetBalancePitchRadians(),
-                            target.targetRollRadians()
-                                    - target.targetBalanceRollRadians(),
-                            target.targetBodyTranslationYBlocks());
+                            0.0);
             List<DinosaurLegPose> legs = solveVisualLegs(
                     target,
                     config,
@@ -52,7 +57,8 @@ public final class DinosaurProceduralAnimator {
                     target.targetPitchRadians()
                             - target.targetBalancePitchRadians(),
                     target.targetRollRadians()
-                            - target.targetBalanceRollRadians());
+                            - target.targetBalanceRollRadians(),
+                    footTilts);
             SmoothedPose initial = new SmoothedPose(
                     target.targetPitchRadians(),
                     target.targetRollRadians(),
@@ -60,6 +66,8 @@ public final class DinosaurProceduralAnimator {
                     target.targetBalancePitchRadians(),
                     target.targetBalanceRollRadians(),
                     target.orientation(),
+                    footTilts,
+                    config.scale(),
                     renderTime);
             this.smoothedPoses.put(entity, initial);
             return target.withSmoothedValues(
@@ -76,20 +84,20 @@ public final class DinosaurProceduralAnimator {
                     previous.pitch() - previous.balancePitch();
             float structuralRoll =
                     previous.roll() - previous.balanceRoll();
-            float bodyTranslationY =
-                    DinosaurLegIkSolver.constrainBodyTranslationY(
+            float bodyTranslationY = previous.bodyTranslationY();
+            Map<String, SmoothedFootTilt> footTilts =
+                    updateFootTilts(
+                            previous.footTilts(),
+                            target,
                             config,
-                            target.samples(),
-                            target.legs(),
-                            structuralPitch,
-                            structuralRoll,
-                            previous.bodyTranslationY());
+                            0.0);
             List<DinosaurLegPose> legs = solveVisualLegs(
                     target,
                     config,
                     bodyTranslationY,
                     structuralPitch,
-                    structuralRoll);
+                    structuralRoll,
+                    footTilts);
             this.smoothedPoses.put(
                     entity,
                     new SmoothedPose(
@@ -99,6 +107,8 @@ public final class DinosaurProceduralAnimator {
                             previous.balancePitch(),
                             previous.balanceRoll(),
                             previous.orientation(),
+                            footTilts,
+                            config.scale(),
                             renderTime));
             return target.withSmoothedValues(
                     previous.pitch(),
@@ -128,14 +138,7 @@ public final class DinosaurProceduralAnimator {
                 previous.bodyTranslationY(),
                 target.targetBodyTranslationYBlocks(),
                 alpha);
-        float bodyTranslationY =
-                DinosaurLegIkSolver.constrainBodyTranslationY(
-                        config,
-                        target.samples(),
-                        target.legs(),
-                        structuralPitch,
-                        structuralRoll,
-                        desiredBodyTranslationY);
+        float bodyTranslationY = desiredBodyTranslationY;
         float orientationAlpha = (float) (1.0 - Math.exp(
                 -config.orientation().visualSmoothingResponsePerSecond()
                         * elapsedSeconds));
@@ -147,14 +150,21 @@ public final class DinosaurProceduralAnimator {
                                 * orientationAlpha,
                 lerp(
                         previous.orientation().pitchRadians(),
-                        target.orientation().targetPitchRadians(),
-                        orientationAlpha));
+                                target.orientation().targetPitchRadians(),
+                                orientationAlpha));
+        Map<String, SmoothedFootTilt> footTilts =
+                updateFootTilts(
+                        previous.footTilts(),
+                        target,
+                        config,
+                        elapsedSeconds);
         List<DinosaurLegPose> legs = solveVisualLegs(
                 target,
                 config,
                 bodyTranslationY,
                 structuralPitch,
-                structuralRoll);
+                structuralRoll,
+                footTilts);
         this.smoothedPoses.put(
                 entity,
                 new SmoothedPose(
@@ -164,6 +174,8 @@ public final class DinosaurProceduralAnimator {
                         balancePitch,
                         balanceRoll,
                         orientation,
+                        footTilts,
+                        config.scale(),
                         renderTime));
         return target.withSmoothedValues(
                 pitch,
@@ -184,9 +196,17 @@ public final class DinosaurProceduralAnimator {
                 .map(snapshot -> applyBodyPose(snapshot, pose, config))
                 .orElse(0.0F);
         for (DinosaurLegPose leg : pose.legs()) {
-            float ikWeight = leg.forcedMaximumExtension()
-                    ? 1.0F
-                    : pose.gait().supportWeight(leg.legId());
+            float ikWeight;
+            if (pose.airborne() || leg.forcedMaximumExtension()) {
+                ikWeight = 1.0F;
+            } else if (!leg.terrainContact() || !leg.reachable()) {
+                // A ray may see distant terrain that this leg cannot reach.
+                // It is observation, not support, and must never freeze an
+                // authored foot in mid-air.
+                ikWeight = 0.0F;
+            } else {
+                ikWeight = pose.gait().supportWeight(leg.legId());
+            }
             applyLegPose(
                     config,
                     config.leg(leg.legId()),
@@ -273,7 +293,13 @@ public final class DinosaurProceduralAnimator {
         snapshots.get(rig.lowerBone()).ifPresent(snapshot ->
                 blendRotation(snapshot, legPose.kneeRotation(), ikWeight));
         snapshots.get(rig.footBone()).ifPresent(snapshot ->
-                blendFootRotation(snapshot, legPose, ikWeight));
+                blendFootOrientation(
+                        config,
+                        rig,
+                        snapshot,
+                        legPose,
+                        ikWeight,
+                        snapshots));
     }
 
     private static DinosaurBoneRotation compensatedHipRotation(
@@ -356,23 +382,98 @@ public final class DinosaurProceduralAnimator {
                 ikWeight));
     }
 
-    private static void blendFootRotation(
+    /**
+     * Blends the complete foot orientation in model-root space. The old
+     * component-wise Euler blend ignored the already blended rotations of the
+     * body, upper leg and lower leg, so their cancellation failed halfway
+     * through a step and produced apparently random foot angles.
+     */
+    private static void blendFootOrientation(
+            DinosaurProceduralConfig config,
+            DinosaurLegRig rig,
             BoneSnapshot snapshot,
             DinosaurLegPose pose,
-            float ikWeight) {
-        DinosaurBoneRotation foot = pose.footRotation();
-        snapshot.setRotX(blendAngle(
-                snapshot.getRotX(),
-                foot.xRadians() + pose.footTerrainPitchRadians(),
-                ikWeight));
-        snapshot.setRotY(blendAngle(
-                snapshot.getRotY(),
-                foot.yRadians(),
-                ikWeight));
-        snapshot.setRotZ(blendAngle(
-                snapshot.getRotZ(),
-                foot.zRadians() + pose.footTerrainRollRadians(),
-                ikWeight));
+            float ikWeight,
+            BoneSnapshots snapshots) {
+        Quaternion parentWorld = DinosaurRotationMath.parentWorldRotation(
+                config.skeleton(),
+                rig.footBone(),
+                boneName -> snapshots.get(boneName)
+                        .map(DinosaurProceduralAnimator::totalRotation)
+                        .orElse(DinosaurBoneRotation.ZERO));
+        DinosaurBoneRotation authoredLocalRotation = totalRotation(snapshot);
+        Quaternion authoredWorld = parentWorld.multiply(
+                DinosaurRotationMath.fromEuler(authoredLocalRotation));
+        Quaternion terrainWorld = DinosaurRotationMath.terrainOrientation(
+                pose.footTerrainPitchRadians(),
+                pose.footTerrainRollRadians());
+        Quaternion blendedWorld = authoredWorld.slerp(
+                terrainWorld,
+                ikWeight);
+        DinosaurBoneRotation blendedLocal = parentWorld
+                .inverse()
+                .multiply(blendedWorld)
+                .toEuler();
+
+        snapshot.setRotX(
+                blendedLocal.xRadians() - snapshot.getBone().baseRotX());
+        snapshot.setRotY(
+                blendedLocal.yRadians() - snapshot.getBone().baseRotY());
+        snapshot.setRotZ(
+                blendedLocal.zRadians() - snapshot.getBone().baseRotZ());
+
+        /*
+         * Slerping a long box between two valid orientations is nonlinear:
+         * an intermediate corner can dip below the support plane even when
+         * both endpoints fit. Lift only that residual amount. Full authored
+         * and full IK poses remain untouched, and the correction scales from
+         * the real foot box rather than a species-specific constant.
+         */
+        double authoredClearance = DinosaurRotationMath.footPivotClearance(
+                rig,
+                authoredWorld,
+                terrainWorld);
+        double proceduralClearance =
+                DinosaurRotationMath.footPivotClearance(
+                        rig,
+                        terrainWorld,
+                        terrainWorld);
+        double blendedClearance = DinosaurRotationMath.footPivotClearance(
+                rig,
+                blendedWorld,
+                terrainWorld);
+        double interpolatedClearance = Mth.lerp(
+                ikWeight,
+                authoredClearance,
+                proceduralClearance);
+        double residualLift = Math.max(
+                0.0,
+                blendedClearance - interpolatedClearance);
+        if (residualLift <= 1.0E-6) {
+            return;
+        }
+
+        Vec3 localLift = parentWorld
+                .inverse()
+                .rotate(new Vec3(0.0, residualLift, 0.0));
+        double modelUnits = MODEL_UNITS_PER_BLOCK / config.scale();
+        snapshot.setTranslateX(
+                snapshot.getTranslateX()
+                        - (float) (localLift.x * modelUnits));
+        snapshot.setTranslateY(
+                snapshot.getTranslateY()
+                        + (float) (localLift.y * modelUnits));
+        snapshot.setTranslateZ(
+                snapshot.getTranslateZ()
+                        + (float) (localLift.z * modelUnits));
+    }
+
+    private static DinosaurBoneRotation totalRotation(
+            BoneSnapshot snapshot) {
+        return new DinosaurBoneRotation(
+                snapshot.getBone().baseRotX() + snapshot.getRotX(),
+                snapshot.getBone().baseRotY() + snapshot.getRotY(),
+                snapshot.getBone().baseRotZ() + snapshot.getRotZ());
     }
 
     private static DinosaurLegPose compensateBodyAnimation(
@@ -436,7 +537,8 @@ public final class DinosaurProceduralAnimator {
             DinosaurProceduralConfig config,
             float bodyTranslationY,
             float bodyPitch,
-            float bodyRoll) {
+            float bodyRoll,
+            Map<String, SmoothedFootTilt> footTilts) {
         Map<String, DinosaurTerrainSample> samplesByLegId = new HashMap<>();
         for (DinosaurTerrainSample sample : target.samples()) {
             samplesByLegId.put(sample.legId(), sample);
@@ -447,35 +549,136 @@ public final class DinosaurProceduralAnimator {
         for (DinosaurLegPose targetLeg : target.legs()) {
             DinosaurTerrainSample sample =
                     samplesByLegId.get(targetLeg.legId());
+            SmoothedFootTilt footTilt =
+                    footTilts.get(targetLeg.legId());
             boolean planted = sample != null
                     ? sample.plantedCandidate()
                     : targetLeg.planted();
+            float footPitch = footTilt != null
+                    ? footTilt.pitchRadians()
+                    : targetLeg.footTerrainPitchRadians();
+            float footRoll = footTilt != null
+                    ? footTilt.rollRadians()
+                    : targetLeg.footTerrainRollRadians();
+            DinosaurLegRig rig = config.leg(targetLeg.legId());
+            double requestedClearance =
+                    DinosaurRotationMath.terrainFootPivotClearance(
+                            rig,
+                            targetLeg.footTerrainPitchRadians(),
+                            targetLeg.footTerrainRollRadians());
+            double smoothedClearance =
+                    DinosaurRotationMath.terrainFootPivotClearance(
+                            rig,
+                            footPitch,
+                            footRoll);
+            float targetFootHeight = (float) (
+                    targetLeg.targetFootHeightOffset()
+                            - requestedClearance
+                            + smoothedClearance);
             if (targetLeg.forcedMaximumExtension()) {
                 DinosaurLegPose extended =
                         DinosaurLegIkSolver.solveMaximumExtension(
                                 config,
-                                config.leg(targetLeg.legId()),
+                                rig,
                                 bodyTranslationY,
                                 bodyPitch,
                                 bodyRoll,
                                 targetLeg.terrainContact());
-                result.add(extended.withRequestedState(targetLeg));
+                result.add(extended
+                        .withRequestedState(targetLeg)
+                        .withFootTerrainTilt(footPitch, footRoll));
                 continue;
             }
             result.add(DinosaurLegIkSolver.solveTarget(
                     config,
-                    config.leg(targetLeg.legId()),
-                    targetLeg.targetFootHeightOffset(),
+                    rig,
+                    targetFootHeight,
                     bodyTranslationY,
                     bodyPitch,
                     bodyRoll,
                     planted,
                     targetLeg.terrainContact())
                     .withFootTerrainTilt(
-                            targetLeg.footTerrainPitchRadians(),
-                            targetLeg.footTerrainRollRadians()));
+                            footPitch,
+                            footRoll));
         }
         return List.copyOf(result);
+    }
+
+    /**
+     * Smooths only the visual terrain normal. Foot height always comes from
+     * the current sample: retaining an old world-space height while the body
+     * moved horizontally was the source of hovering and clipping when walking
+     * backwards or crossing a ledge.
+     */
+    private static Map<String, SmoothedFootTilt> updateFootTilts(
+            Map<String, SmoothedFootTilt> previousTilts,
+            DinosaurProceduralPose target,
+            DinosaurProceduralConfig config,
+            double elapsedSeconds) {
+        Map<String, DinosaurTerrainSample> samplesByLegId = new HashMap<>();
+        for (DinosaurTerrainSample sample : target.samples()) {
+            samplesByLegId.put(sample.legId(), sample);
+        }
+
+        Map<String, SmoothedFootTilt> result = new HashMap<>();
+        for (DinosaurLegPose leg : target.legs()) {
+            DinosaurTerrainSample sample = samplesByLegId.get(leg.legId());
+            SmoothedFootTilt previous = previousTilts == null
+                    ? null
+                    : previousTilts.get(leg.legId());
+            float supportWeight =
+                    target.gait().supportWeight(leg.legId());
+            boolean stableContact = sample != null
+                    && sample.valid()
+                    && leg.terrainContact()
+                    && leg.reachable()
+                    && !leg.forcedMaximumExtension()
+                    && supportWeight >= FOOT_TILT_CONTACT_WEIGHT;
+            float targetPitch =
+                    stableContact ? sample.footPitchRadians() : 0.0F;
+            float targetRoll =
+                    stableContact ? sample.footRollRadians() : 0.0F;
+
+            float currentPitch = previous == null
+                    ? targetPitch
+                    : smoothFootAngle(
+                            previous.pitchRadians(),
+                            targetPitch,
+                            config.smoothingResponsePerSecond(),
+                            elapsedSeconds);
+            float currentRoll = previous == null
+                    ? targetRoll
+                    : smoothFootAngle(
+                            previous.rollRadians(),
+                            targetRoll,
+                            config.smoothingResponsePerSecond(),
+                            elapsedSeconds);
+            result.put(
+                    leg.legId(),
+                    new SmoothedFootTilt(
+                            currentPitch,
+                            currentRoll));
+        }
+        return Map.copyOf(result);
+    }
+
+    private static float smoothFootAngle(
+            float current,
+            float target,
+            float responsePerSecond,
+            double elapsedSeconds) {
+        if (elapsedSeconds <= 0.0) {
+            return current;
+        }
+        float alpha = (float) (
+                1.0 - Math.exp(-responsePerSecond * elapsedSeconds));
+        float desiredStep = angularDelta(current, target) * alpha;
+        float maximumStep = (float) (
+                MAX_FOOT_ANGULAR_SPEED_RADIANS_PER_SECOND
+                        * elapsedSeconds);
+        return current
+                + Mth.clamp(desiredStep, -maximumStep, maximumStep);
     }
 
     private static float lerp(float start, float end, float alpha) {
@@ -515,6 +718,16 @@ public final class DinosaurProceduralAnimator {
             float balancePitch,
             float balanceRoll,
             DinosaurOrientationPose orientation,
+            Map<String, SmoothedFootTilt> footTilts,
+            float scale,
             double renderTime) {
+        private SmoothedPose {
+            footTilts = Map.copyOf(footTilts);
+        }
+    }
+
+    private record SmoothedFootTilt(
+            float pitchRadians,
+            float rollRadians) {
     }
 }

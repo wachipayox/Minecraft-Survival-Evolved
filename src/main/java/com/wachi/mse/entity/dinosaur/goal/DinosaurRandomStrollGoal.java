@@ -22,8 +22,12 @@ public final class DinosaurRandomStrollGoal extends RandomStrollGoal {
     private static final double STRIDES_PER_DESTINATION = 3.0;
     private static final double FORWARD_CONE_RADIANS =
             Math.toRadians(22.5);
+    private static final int MAX_TICKS_WITHOUT_APPROACH = 40;
 
     private final PathfinderMob dinosaur;
+    private Vec3 activeDestination;
+    private double bestDistance = Double.POSITIVE_INFINITY;
+    private int ticksWithoutApproach;
 
     public DinosaurRandomStrollGoal(PathfinderMob dinosaur) {
         super(
@@ -41,12 +45,45 @@ public final class DinosaurRandomStrollGoal extends RandomStrollGoal {
 
     @Override
     public boolean canContinueToUse() {
-        return !this.dinosaur.isVehicle()
-                && super.canContinueToUse();
+        if (this.dinosaur.isVehicle()
+                || !super.canContinueToUse()
+                || this.activeDestination == null) {
+            return false;
+        }
+
+        double distance = horizontalDistance(
+                this.dinosaur.position(),
+                this.activeDestination);
+        double arrivalRadius = Math.max(
+                0.75,
+                this.dinosaur.getBbWidth() * 0.35);
+        if (distance <= arrivalRadius) {
+            return false;
+        }
+
+        double meaningfulProgress = Math.max(
+                0.025,
+                this.dinosaur.getBbWidth() * 0.005);
+        if (distance < this.bestDistance - meaningfulProgress) {
+            this.bestDistance = distance;
+            this.ticksWithoutApproach = 0;
+        } else {
+            this.ticksWithoutApproach++;
+        }
+        return this.ticksWithoutApproach
+                < MAX_TICKS_WITHOUT_APPROACH;
     }
 
     @Override
     public void start() {
+        this.activeDestination = new Vec3(
+                this.wantedX,
+                this.wantedY,
+                this.wantedZ);
+        this.bestDistance = horizontalDistance(
+                this.dinosaur.position(),
+                this.activeDestination);
+        this.ticksWithoutApproach = 0;
         double idleSpeedModifier =
                 DinosaurMoveControl.idleSpeedModifierFor(this.dinosaur);
         if (this.dinosaur.getMoveControl()
@@ -62,6 +99,9 @@ public final class DinosaurRandomStrollGoal extends RandomStrollGoal {
 
     @Override
     public void stop() {
+        this.activeDestination = null;
+        this.bestDistance = Double.POSITIVE_INFINITY;
+        this.ticksWithoutApproach = 0;
         if (this.dinosaur.getMoveControl()
                 instanceof DinosaurMoveControl moveControl) {
             moveControl.endIdleMovement();
@@ -98,5 +138,13 @@ public final class DinosaurRandomStrollGoal extends RandomStrollGoal {
                 VERTICAL_RANGE,
                 focus,
                 FORWARD_CONE_RADIANS);
+    }
+
+    private static double horizontalDistance(
+            Vec3 first,
+            Vec3 second) {
+        double x = first.x - second.x;
+        double z = first.z - second.z;
+        return Math.sqrt(x * x + z * z);
     }
 }

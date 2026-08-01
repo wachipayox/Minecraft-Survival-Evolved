@@ -1,5 +1,6 @@
 package com.wachi.mse.entity.dinosaur.procedural;
 
+import com.wachi.mse.entity.dinosaur.ProceduralDinosaur;
 import com.wachi.mse.entity.dinosaur.config.DinosaurLegRig;
 import com.wachi.mse.entity.dinosaur.config.DinosaurProceduralConfig;
 import com.wachi.mse.entity.dinosaur.config.DinosaurProceduralConfig.GaitConfig;
@@ -16,6 +17,8 @@ public record DinosaurGaitState(
         float phase,
         float activity,
         Map<String, Float> supportWeights) {
+    private static final float MINIMUM_CONTACT_BLEND_TICKS = 1.5F;
+
     public DinosaurGaitState {
         supportWeights = Map.copyOf(supportWeights);
     }
@@ -24,6 +27,13 @@ public record DinosaurGaitState(
             LivingEntity entity,
             DinosaurProceduralConfig config,
             float partialTick) {
+        if (entity instanceof ProceduralDinosaur dinosaur) {
+            return fromCyclePosition(
+                    config,
+                    dinosaur.gaitCyclePosition(partialTick),
+                    entity.walkAnimation.speed(partialTick),
+                    cycleAdvancePerTick(dinosaur));
+        }
         return fromWalkAnimation(
                 config,
                 entity.walkAnimation.position(partialTick),
@@ -33,6 +43,13 @@ public record DinosaurGaitState(
     public static DinosaurGaitState sampleAuthoritative(
             LivingEntity entity,
             DinosaurProceduralConfig config) {
+        if (entity instanceof ProceduralDinosaur dinosaur) {
+            return fromCyclePosition(
+                    config,
+                    dinosaur.gaitCyclePosition(1.0F),
+                    entity.walkAnimation.speed(),
+                    cycleAdvancePerTick(dinosaur));
+        }
         return fromWalkAnimation(
                 config,
                 entity.walkAnimation.position(),
@@ -44,7 +61,20 @@ public record DinosaurGaitState(
             float walkPosition,
             float walkSpeed) {
         GaitConfig gait = config.gait();
-        float phase = positiveFraction(walkPosition / gait.walkAnimationUnitsPerCycle());
+        return fromCyclePosition(
+                config,
+                walkPosition / gait.walkAnimationUnitsPerCycle(),
+                walkSpeed,
+                0.0);
+    }
+
+    private static DinosaurGaitState fromCyclePosition(
+            DinosaurProceduralConfig config,
+            double cyclePosition,
+            float walkSpeed,
+            double cycleAdvancePerTick) {
+        GaitConfig gait = config.gait();
+        float phase = positiveFraction(cyclePosition);
         float activity = smoothStep(Mth.clamp(
                 walkSpeed / gait.fullActivitySpeed(),
                 0.0F,
@@ -52,7 +82,11 @@ public record DinosaurGaitState(
         Map<String, Float> weights = new LinkedHashMap<>();
 
         for (DinosaurLegRig leg : config.legs()) {
-            float phaseWeight = phaseSupportWeight(phase, leg, gait);
+            float phaseWeight = phaseSupportWeight(
+                    phase,
+                    leg,
+                    gait,
+                    cycleAdvancePerTick);
             weights.put(leg.id(), Mth.lerp(activity, 1.0F, phaseWeight));
         }
 
@@ -70,13 +104,17 @@ public record DinosaurGaitState(
     private static float phaseSupportWeight(
             float gaitPhase,
             DinosaurLegRig leg,
-            GaitConfig gait) {
+            GaitConfig gait,
+            double cycleAdvancePerTick) {
         float airborneDuration = positiveFraction(
                 leg.plantPhase() - leg.liftOffPhase());
         float airborneProgress = positiveFraction(
                 gaitPhase - leg.liftOffPhase());
+        float automaticBlend = (float) (
+                Math.abs(cycleAdvancePerTick)
+                        * MINIMUM_CONTACT_BLEND_TICKS);
         float blend = Math.min(
-                gait.contactBlendFraction(),
+                Math.max(gait.contactBlendFraction(), automaticBlend),
                 airborneDuration * 0.5F);
         if (airborneProgress < airborneDuration) {
             if (blend <= 0.0F) {
@@ -98,8 +136,14 @@ public record DinosaurGaitState(
                 : 1.0F;
     }
 
-    private static float positiveFraction(float value) {
-        return value - Mth.floor(value);
+    private static double cycleAdvancePerTick(
+            ProceduralDinosaur dinosaur) {
+        return dinosaur.gaitCyclePosition(1.0F)
+                - dinosaur.gaitCyclePosition(0.0F);
+    }
+
+    private static float positiveFraction(double value) {
+        return (float) (value - Math.floor(value));
     }
 
     private static float smoothStep(float value) {

@@ -24,7 +24,10 @@ import com.wachi.mse.entity.dinosaur.procedural.DinosaurBalanceController;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurGaitState;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurProceduralPose;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurTerrainSampler;
+import com.wachi.mse.entity.dinosaur.testing.TemporaryForestHitboxBreaker;
 import com.wachi.mse.registry.MseDinosaurProfiles;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.ints.IntSet;
 import java.util.Optional;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -34,9 +37,11 @@ import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PathfinderMob;
@@ -85,6 +90,10 @@ public abstract class DinosaurEntity
     private DinosaurProceduralPose cachedAuthoritativePose;
     private int cachedAuthoritativePoseTick = Integer.MIN_VALUE;
     private boolean movementAnimationWalking;
+    private double gaitCyclePositionOld;
+    private double gaitCyclePosition;
+    private final IntSet entitiesPushedByParts = new IntOpenHashSet();
+    private int partPushTick = Integer.MIN_VALUE;
 
     protected DinosaurEntity(
             EntityType<? extends DinosaurEntity> entityType,
@@ -167,6 +176,27 @@ public abstract class DinosaurEntity
         return Math.round(this.proceduralConfig().orientation().headYawSpeedDegreesPerTick());
     }
 
+    /**
+     * Uses the profile STEP_HEIGHT as a base-size capability and scales it
+     * with the live SCALE attribute for AI, pursuit and ridden movement alike.
+     *
+     * <p>LivingEntity otherwise forces a hidden one-block minimum only while
+     * ridden, which makes the same dinosaur traverse different terrain
+     * depending on who controls it.</p>
+     */
+    @Override
+    public float maxUpStep() {
+        return (float) (
+                this.getAttributeValue(Attributes.STEP_HEIGHT)
+                        * this.getScale());
+    }
+
+    /// Matches dino step heigh with minimum fall distance for damage
+    @Override
+    protected int calculateFallDamage(double fallDistance, float damageModifier) {
+        return super.calculateFallDamage(fallDistance - maxUpStep(), damageModifier);
+    }
+
     @Override
     public InteractionResult mobInteract(
             Player player,
@@ -246,6 +276,33 @@ public abstract class DinosaurEntity
                 : DinosaurMoveControl.idleSpeedFor(this);
     }
 
+    /**
+     * Advances an exact distance-driven gait clock alongside vanilla's
+     * smoothed activity signal.
+     *
+     * <p>Vanilla clamps walk-animation speed to one unit per tick, losing
+     * distance above 0.25 blocks/tick. Accumulating cycles directly avoids
+     * sprint and scale-dependent foot sliding. Dividing each travelled
+     * segment by the stride that was active for that segment also prevents a
+     * runtime SCALE change from reinterpreting the complete movement
+     * history.</p>
+     */
+    @Override
+    protected void updateWalkAnimation(float distance) {
+        this.gaitCyclePositionOld = this.gaitCyclePosition;
+        this.gaitCyclePosition += distance
+                / this.proceduralConfig().gait().strideLengthBlocks();
+        super.updateWalkAnimation(distance);
+    }
+
+    @Override
+    public double gaitCyclePosition(float partialTick) {
+        return Mth.lerp(
+                (double) partialTick,
+                this.gaitCyclePositionOld,
+                this.gaitCyclePosition);
+    }
+
     @Override
     public void tick() {
         super.tick();
@@ -264,6 +321,10 @@ public abstract class DinosaurEntity
             this.balanceController.tick(this, this.proceduralConfig());
         }
         this.hitboxController.tick();
+        TemporaryForestHitboxBreaker.tick(
+                this,
+                this.hitboxController.parts());
+        this.pushEntitiesFromCurrentAnatomicalPose();
     }
 
     @Override
@@ -345,6 +406,123 @@ public abstract class DinosaurEntity
         return this.profile;
     }
 
+    public boolean canBeWalkedOn() {
+        return this.profile.canBeWalkedOn();
+    }
+
+    public boolean preciselySupports(
+            DinosaurPartEntity part,
+            AABB entityBounds) {
+        return this.hitboxController.preciselySupports(
+                part,
+                entityBounds);
+    }
+
+    public boolean preciselyIntersects(
+            DinosaurPartEntity part,
+            AABB bounds) {
+        return this.hitboxController.preciselyIntersects(
+                part,
+                bounds);
+    }
+
+    public Vec3 preciseTopSurface(
+            DinosaurPartEntity part,
+            AABB entityBounds) {
+        return this.hitboxController.preciseTopSurface(
+                part,
+                entityBounds);
+    }
+
+    public boolean isTransportSupported(Entity entity) {
+        return this.hitboxController.isTransportSupported(entity);
+    }
+
+    public boolean isActivelyTransporting(Entity entity) {
+        return this.hitboxController.isActivelyTransporting(entity);
+    }
+
+    /**
+     * The logical entity box is only responsible for block movement and
+     * broad entity state. Anatomical part boxes own entity-to-entity pushes.
+     */
+    @Override
+    public boolean isPushable() {
+        return false;
+    }
+
+    @Override
+    public void push(Entity other) {
+    }
+
+    @Override
+    protected void pushEntities() {
+        /*
+         * LivingEntity invokes this from inside super.tick(), before this
+         * dinosaur has sampled and applied its current procedural pose. Doing
+         * anatomical pushes there compares occupants with last tick's part
+         * transforms and creates intermittent radial impulses. The equivalent
+         * pass runs at the end of DinosaurEntity#tick, after the hitboxes and
+         * transport state are current.
+         */
+    }
+
+    private void pushEntitiesFromCurrentAnatomicalPose() {
+        for (DinosaurPartEntity part : this.hitboxController.parts()) {
+            for (Entity other : this.level().getPushableEntities(
+                    part,
+                    part.getBoundingBox())) {
+                if (other == this
+                        || other instanceof DinosaurPartEntity otherPart
+                                && otherPart.getParent() == this
+                        || this.hasPassenger(other)) {
+                    continue;
+                }
+                part.push(other);
+            }
+        }
+    }
+
+    public boolean canPushFromPart(
+            DinosaurPartEntity part,
+            Entity other) {
+        if (part.getParent() != this
+                || !this.isAlive()
+                || other == this
+                || this.hasPassenger(other)
+                || other instanceof DinosaurPartEntity otherPart
+                        && otherPart.getParent() == this) {
+            return false;
+        }
+        /*
+         * A supported entity is already carried by
+         * DinosaurTransportController. Entity#push would additionally add a
+         * horizontal impulse away from the part center every tick, slowly
+         * walking an otherwise stationary entity off the dinosaur.
+         *
+         * The anatomical push pass runs after the current pose is applied, so
+         * this test can use the actual oriented model surface. Using the
+         * native AABB's maxY is incorrect for a rotated box: it describes its
+         * highest corner, not the surface beneath the other entity.
+         */
+        if (this.isTransportSupported(other)
+                || this.hitboxController.preciselySupportsAny(other)) {
+            return false;
+        }
+        if (this.partPushTick != this.tickCount) {
+            this.partPushTick = this.tickCount;
+            this.entitiesPushedByParts.clear();
+        }
+        int logicalEntityId = other instanceof DinosaurPartEntity otherPart
+                ? otherPart.getParent().getId()
+                : other.getId();
+        return this.entitiesPushedByParts.add(logicalEntityId);
+    }
+
+    public void pushFromPart(double x, double y, double z) {
+        super.push(x, y, z);
+    }
+
     public final Identifier profileId() {
         return BuiltInRegistries.ENTITY_TYPE.getKey(this.getType());
     }
@@ -358,8 +536,7 @@ public abstract class DinosaurEntity
                 .lookupOrThrow(MseDinosaurProfiles.REGISTRY)
                 .getValueOrThrow(profileKey);
 
-        this.baseProceduralConfig =
-                this.profile.createBaseConfig();
+        this.baseProceduralConfig = this.profile.createBaseConfig();
         this.scaledProceduralConfig = null;
         this.cachedProceduralScale = Float.NaN;
         this.cachedAuthoritativePoseTick = Integer.MIN_VALUE;
@@ -407,6 +584,10 @@ public abstract class DinosaurEntity
                 Attributes.STEP_HEIGHT,
                 stats.stepHeight(),
                 DinosaurProfile.Stats.DEFAULT.stepHeight());
+//        this.applyProfileStat(
+//                Attributes.SAFE_FALL_DISTANCE,
+//                2 + stats.stepHeight(),
+//                DinosaurProfile.Stats.DEFAULT.stepHeight() + 2);
         this.applyOptionalProfileStat(
                 Attributes.CAMERA_DISTANCE,
                 stats.ridingCameraDistance());

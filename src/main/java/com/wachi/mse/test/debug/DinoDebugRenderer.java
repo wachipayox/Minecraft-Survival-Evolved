@@ -1,23 +1,30 @@
-package com.wachi.mse.client.debug;
+package com.wachi.mse.test.debug;
 
 import com.wachi.mse.entity.dinosaur.ProceduralDinosaur;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurLegPose;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurProceduralPose;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurStabilityAssessment;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurTerrainSample;
-import java.util.List;
-import java.util.Locale;
+import com.wachi.mse.test.dino.DinoEntity;
+import com.wachi.mse.test.dino.DinoLeg;
+import com.wachi.mse.test.dino.DinoLegPair;
+import com.wachi.mse.test.terrain.TerrainWatcher;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.debug.DebugRenderer;
+import net.minecraft.gizmos.GizmoStyle;
 import net.minecraft.gizmos.Gizmos;
 import net.minecraft.gizmos.TextGizmo;
 import net.minecraft.util.debug.DebugValueAccess;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
-public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRenderer {
+import java.util.List;
+import java.util.Locale;
+
+public final class DinoDebugRenderer implements DebugRenderer.SimpleDebugRenderer {
     private static final double MAX_DISTANCE_SQUARED = 64.0 * 64.0;
     private static final float POINT_SIZE = 0.11F;
     private static final int[] LEG_COLORS = {
@@ -31,7 +38,7 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
 
     private final Minecraft minecraft;
 
-    public DinosaurDebugRenderer(Minecraft minecraft) {
+    public DinoDebugRenderer(Minecraft minecraft) {
         this.minecraft = minecraft;
     }
 
@@ -42,29 +49,62 @@ public final class DinosaurDebugRenderer implements DebugRenderer.SimpleDebugRen
             double cameraZ,
             DebugValueAccess debugValues,
             Frustum frustum,
-            float partialTicks) {
+            float pTicks) {
         if (this.minecraft.level == null
-                || !this.minecraft.getDebugOverlay().showDebugScreen()) {
-            return;
-        }
+          //      || !this.minecraft.getDebugOverlay().showDebugScreen()
+        ) return;
 
         Vec3 cameraPosition = new Vec3(cameraX, cameraY, cameraZ);
         for (Entity candidate : this.minecraft.level.entitiesForRendering()) {
-            if (!(candidate instanceof LivingEntity dinosaur)
-                    || !(candidate instanceof ProceduralDinosaur)
-                    || dinosaur.position().distanceToSqr(cameraPosition) > MAX_DISTANCE_SQUARED
-                    || !frustum.isVisible(dinosaur.getBoundingBox())) {
+            if (!(candidate instanceof DinoEntity dinoEntity)
+                    || dinoEntity.position().distanceToSqr(cameraPosition) > MAX_DISTANCE_SQUARED
+                    || !frustum.isVisible(dinoEntity.getBoundingBox())) {
                 continue;
             }
 
-            DinosaurProceduralPose pose = DinosaurDebugPoseStore.get(dinosaur);
-            if (pose == null) {
-                continue;
-            }
 
-            emitPoseGizmos(pose, dinosaur);
+            for(DinoLegPair<DinoEntity> legPair : dinoEntity.hips) {
+
+                Gizmos.line(
+                        legPair.getCenter(pTicks),
+                        legPair.getLeftLeg().getUpper(pTicks), 0xFF66FF8C
+                );
+                Gizmos.line(
+                        legPair.getCenter(pTicks),
+                        legPair.getRightLeg().getUpper(pTicks), 0xFF66FF8C
+                );
+
+                for (DinoLeg<DinoEntity> leg : legPair.getLegs()) {
+                    DinoLeg.DLegGeometry geometry = leg.calculateGeometry(leg.actualPose, pTicks);
+
+//                    for (Capsule collision : geometry.getCollisions(leg.thickness)) {
+//                        Gizmos.cuboid(
+//                                collision.bounds(), GizmoStyle.stroke(0xFF1AE6FF)
+//                        );
+//                    }
+                    for (TerrainWatcher terrainWatcher : dinoEntity.getTerrainWatchers().values()) {
+                        Gizmos.cuboid(terrainWatcher.requiredArea, GizmoStyle.stroke(0xFF1AE6FF));
+                        Gizmos.cuboid(terrainWatcher.comfortArea, GizmoStyle.stroke(0xFFFF731A));
+                        Gizmos.cuboid(terrainWatcher.cachedArea, GizmoStyle.stroke(0xFFBF4DFF));
+                    }
+
+                    Gizmos.line(geometry.upper(), geometry.knee(), 0xFF1AE6FF);
+                    Gizmos.line(geometry.knee(), geometry.end(), 0xFFFF731A);
+                    Gizmos.circle(
+                            leg.getUpper(pTicks),
+                            (float) leg.thickness, GizmoStyle.stroke(0xFF1AE6FF)
+                    );
+                    Gizmos.circle(
+                            geometry.end(),
+                            (float) leg.thickness, GizmoStyle.stroke(0xFFFF731A)
+                    );
+                }
+            }
         }
     }
+
+
+
 
     private static void emitPoseGizmos(
             DinosaurProceduralPose dinoPose,

@@ -1,4 +1,4 @@
-package com.wachi.mse.entity.dino;
+package com.wachi.mse.test.dino;
 
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
@@ -14,14 +14,14 @@ import net.neoforged.neoforge.entity.PartEntity;
 
 import java.util.function.Function;
 
-public class DinoCaprinoPart extends PartEntity<DinoCaprinoEntity> {
+public class DinoPart extends PartEntity<DinoEntity> {
 
     private final EntityDimensions dimensions;
     private boolean positionInitialized = false;
 
     private final Function<AABB, Vec3> posCalculator;
 
-    public DinoCaprinoPart(DinoCaprinoEntity parent, Function<AABB, Vec3> posCalculator,  float width, float height) {
+    public DinoPart(DinoEntity parent, Function<AABB, Vec3> posCalculator, float width, float height) {
         super(parent);
         this.dimensions = EntityDimensions.scalable(width, height);
         this.refreshDimensions();
