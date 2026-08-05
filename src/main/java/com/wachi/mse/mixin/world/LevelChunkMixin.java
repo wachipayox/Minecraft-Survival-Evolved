@@ -1,8 +1,7 @@
 package com.wachi.mse.mixin.world;
 
-import com.wachi.mse.test.terrain.TerrainChangeTracker;
+import com.wachi.mse.test.collide.terrain.TerrainChangeTracker;
 import net.minecraft.core.BlockPos;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -35,9 +34,7 @@ public abstract class LevelChunkMixin {
             int flags,
             CallbackInfoReturnable<BlockState> cir
     ) {
-        if (!(level instanceof ServerLevel serverLevel)) {
-            return;
-        }
+        if(level == null) return;
 
         BlockState oldState = cir.getReturnValue();
 
@@ -46,7 +43,7 @@ public abstract class LevelChunkMixin {
         }
 
         TerrainChangeTracker.markChanged(
-                serverLevel,
+                level,
                 pos.asLong()
         );
     }

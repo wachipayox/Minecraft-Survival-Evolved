@@ -1,12 +1,10 @@
-package com.wachi.mse.test.terrain;
+package com.wachi.mse.test.collide.terrain;
 
 import com.wachi.mse.MseMod;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 import javax.annotation.Nullable;
@@ -40,19 +38,18 @@ public class TerrainWatcher {
         if(cachedBlockCollisions == null || dirty || !isComfortable()) {
             updateMargins(level);
             cache(level);
+            MseMod.LOGGER.debug("cache");
         }
     }
 
     public void updateMargins(Level level){
-        if(level instanceof ServerLevel sLevel)
-            TerrainChangeTracker.unregisterWatcher(sLevel, this);
+        if(level != null) TerrainChangeTracker.unregisterWatcher(level, this);
 
         comfortArea = requiredArea.inflate(updateMargin);
         cachedArea = comfortArea.inflate(updateMargin);
         dirty = false;
 
-        if(level instanceof ServerLevel sLevel)
-            TerrainChangeTracker.registerWatcher(sLevel, this);
+        if(level != null) TerrainChangeTracker.registerWatcher(level, this);
     }
 
     private void cache(Level level){
@@ -60,10 +57,9 @@ public class TerrainWatcher {
         for (VoxelShape blockCollision : level
                 .getBlockCollisions(collisionContextEntity, cachedArea)
         ) {
-            list.add(blockCollision.bounds());
+            list.addAll(blockCollision.toAabbs());
         }
         cachedBlockCollisions = list;
-        MseMod.LOGGER.debug("cached block collisions");
     }
 
     public boolean isComfortable(){

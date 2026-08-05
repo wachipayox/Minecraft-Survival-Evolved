@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 public final class MseMod {
     public static final String MOD_ID = "mc_evolved";
     public static final Logger LOGGER = LogUtils.getLogger();
+    public static final String NETWORK_VERSION = "1";
 
     public MseMod(IEventBus modEventBus) {
         MseEntities.ENTITY_TYPES.register(modEventBus);

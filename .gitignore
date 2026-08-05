@@ -39,3 +39,4 @@ run/
 repo/
 !**/src/**/repo/
 .ashfox/
+/docs/COMO_ANADIR_DINOSAURIOS.md

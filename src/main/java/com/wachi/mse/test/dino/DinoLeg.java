@@ -1,20 +1,19 @@
 package com.wachi.mse.test.dino;
 
 import com.wachi.mse.test.collide.Capsule;
-import com.wachi.mse.test.terrain.TerrainWatcher;
+import com.wachi.mse.test.collide.IGeometry;
+import com.wachi.mse.test.collide.terrain.TerrainWatcher;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.util.Mth;
-import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
 
 public class DinoLeg<T extends DinoEntity> {
 
@@ -23,13 +22,25 @@ public class DinoLeg<T extends DinoEntity> {
     public record DLegPose(
             float upperXRot,
             float kneeXRot
-    ){}
+    ){
+        public static StreamCodec<FriendlyByteBuf, DLegPose> STREAM_CODEC = StreamCodec.of(
+                (enc, dLegPose) -> {
+                    enc.writeFloat(dLegPose.upperXRot);
+                    enc.writeFloat(dLegPose.kneeXRot);
+                }, (dec) -> new DLegPose(
+                        dec.readFloat(),
+                        dec.readFloat()
+                )
+        );
+    }
 
     public record DLegGeometry(
             Vec3 upper,
             Vec3 knee,
             Vec3 end
-    ) {
+    ) implements IGeometry {
+
+        @Override
         public List<Capsule> getCollisions(double thickness){
             return List.of(
                 new Capsule(upper(), knee(), thickness),
@@ -53,6 +64,8 @@ public class DinoLeg<T extends DinoEntity> {
 
     public DLegPose actualPose;
 
+    public final DinoFoot<T> dinoFoot;
+
     public DinoLeg(DinoLegPair<T> parent, DinoLegBendConfig bends, Vec3 upperPos, double upperLength, double lowerLength, double thickness) {
         this.parent = parent;
         this.upperPos = upperPos;
@@ -67,19 +80,28 @@ public class DinoLeg<T extends DinoEntity> {
         this.thickness = thickness;
 
         actualPose = new DLegPose(0, 0);
+        this.dinoFoot = new DinoFoot<>( //todo valores en constructor
+                new Vec3(0, 0, 0),
+                0.1,
+                thickness,
+                0.3,
+                0.1,
+                0.1,
+                this
+        );
     }
 
     public void tick(float pTicks) {
         DLegGeometry geometry = calculateGeometry(actualPose, pTicks);
         Vec3 hit = getGround(geometry.upper(), getGroundQueryMaxReach());
-        if(hit != null) hit.add(0, thickness, 0); //makes sure bone doesn't touch ground
+        if(hit != null) hit = hit.add(0, thickness, 0); //makes sure bone doesn't touch ground
 
         double hitDistanceToEnd = hit == null ? 0 : hit.distanceTo(geometry.end());
 
         if(state.equals(DLegState.CHILL)){
             //should add here to check if block or motion changes to add an optimization layer
             //rn literally checks same as being in air
-            if(hit == null || hitDistanceToEnd > 0.01 || !geometryFits(geometry))
+            if(hit == null || hitDistanceToEnd > 0.01 || !geometry.fitsInTerrain(getWatcher(), thickness))
                 setState(DLegState.AIR);
         }
         if(state.equals(DLegState.AIR)){
@@ -97,7 +119,7 @@ public class DinoLeg<T extends DinoEntity> {
                 double distance = landingTarget.distanceTo(geometry.upper());
                 if (
                         distance < minReach || distance > maxReach
-                        || !geometryFits(calculateGeometry(upperXRotTarget, kneeXRotTarget, pTicks))
+                        || !calculateGeometry(upperXRotTarget, kneeXRotTarget, pTicks).fitsInTerrain(getWatcher(), thickness)
                 ) setState(DLegState.AIR);
                 else if(geometry.end().distanceTo(landingTarget) < 0.1){
                     setState(DLegState.CHILL);
@@ -186,24 +208,15 @@ public class DinoLeg<T extends DinoEntity> {
         return maxReach + thickness;
     }
 
-    private @Nullable Vec3 getGround(Vec3 pos, double maxDistance) {
-        AABB searchAB = new AABB(pos, pos.add(0, -maxDistance, 0));
+    private @Nullable Vec3 getGround(Vec3 start, double maxDistance) {
+        var end = start.add(0, -maxDistance, 0);
+        AABB searchAB = new AABB(start, end).inflate(1.0E-7);
+
         return getWatcher().getCache().stream()
                 .filter(searchAB::intersects)
-                .map(ab -> ab.clip(searchAB.getMaxPosition(), searchAB.getMinPosition()).orElse(null))
-                .filter(Objects::nonNull)
-                .min(Comparator.comparingDouble(pos::distanceTo))
+                .flatMap(ab -> ab.clip(start, end).stream())
+                .min(Comparator.comparingDouble(start::distanceToSqr))
                 .orElse(null);
-
-// OLD METHOD WITHOUT TERRAIN WATCHER
-//        BlockHitResult hitResult = getDinoParent().level().clip(
-//                new ClipContext(
-//                        pos, pos.add(0, -maxDistance, 0),
-//                        ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE,
-//                        getDinoParent()
-//                )
-//        );
-//        return hitResult.getType().equals(HitResult.Type.BLOCK) ? hitResult : null;
     }
 
     private TerrainWatcher getWatcher(){
@@ -230,26 +243,15 @@ public class DinoLeg<T extends DinoEntity> {
         return parent.parent;
     }
 
-    private float getYRot(float partialTicks){
+    protected float getYRot(float partialTicks){
         return parent.getBodyYRotInRadians(partialTicks)
                 + parent.getYRot()
                 //+ (float) Math.PI for invert
         ;
     }
 
-    public boolean geometryFits(DLegGeometry geometry){
-        var capsules = geometry.getCollisions(Math.max(0.0, thickness - 0.001));
-        var level = getDinoParent().level();
-
-        for (Capsule capsule : capsules)
-            for (var voxelShape : level.getBlockCollisions(getDinoParent(), capsule.bounds()))
-                for (var blockAABB : voxelShape.toAabbs())
-                    if(
-                            blockAABB.inflate(capsule.radius())
-                                    .clip(capsule.start(), capsule.end()).isPresent()
-                    ) return false;
-
-        return true;
+    public DLegGeometry calculateActualGeometry(float partialTicks){
+        return calculateGeometry(actualPose, partialTicks);
     }
 
     public DLegGeometry calculateGeometry(float upperXRot, float kneeXRot, float partialTicks) {

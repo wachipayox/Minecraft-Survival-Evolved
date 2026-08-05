@@ -6,9 +6,10 @@ import com.wachi.mse.entity.dinosaur.procedural.DinosaurProceduralPose;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurStabilityAssessment;
 import com.wachi.mse.entity.dinosaur.procedural.DinosaurTerrainSample;
 import com.wachi.mse.test.dino.DinoEntity;
+import com.wachi.mse.test.dino.DinoFoot;
 import com.wachi.mse.test.dino.DinoLeg;
 import com.wachi.mse.test.dino.DinoLegPair;
-import com.wachi.mse.test.terrain.TerrainWatcher;
+import com.wachi.mse.test.collide.terrain.TerrainWatcher;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.debug.DebugRenderer;
@@ -18,7 +19,6 @@ import net.minecraft.gizmos.TextGizmo;
 import net.minecraft.util.debug.DebugValueAccess;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
@@ -75,17 +75,31 @@ public final class DinoDebugRenderer implements DebugRenderer.SimpleDebugRendere
                 );
 
                 for (DinoLeg<DinoEntity> leg : legPair.getLegs()) {
-                    DinoLeg.DLegGeometry geometry = leg.calculateGeometry(leg.actualPose, pTicks);
+                    DinoLeg.DLegGeometry geometry = leg.calculateActualGeometry(pTicks);
 
 //                    for (Capsule collision : geometry.getCollisions(leg.thickness)) {
 //                        Gizmos.cuboid(
 //                                collision.bounds(), GizmoStyle.stroke(0xFF1AE6FF)
 //                        );
 //                    }
-                    for (TerrainWatcher terrainWatcher : dinoEntity.getTerrainWatchers().values()) {
-                        Gizmos.cuboid(terrainWatcher.requiredArea, GizmoStyle.stroke(0xFF1AE6FF));
-                        Gizmos.cuboid(terrainWatcher.comfortArea, GizmoStyle.stroke(0xFFFF731A));
-                        Gizmos.cuboid(terrainWatcher.cachedArea, GizmoStyle.stroke(0xFFBF4DFF));
+//                    for (TerrainWatcher terrainWatcher : dinoEntity.getTerrainWatchers().values()) {
+//                        Gizmos.cuboid(terrainWatcher.requiredArea, GizmoStyle.stroke(0xFF1AE6FF));
+//                        Gizmos.cuboid(terrainWatcher.comfortArea, GizmoStyle.stroke(0xFFFF731A));
+//                        Gizmos.cuboid(terrainWatcher.cachedArea, GizmoStyle.stroke(0xFFBF4DFF));
+//                    }
+
+                    if(leg.dinoFoot instanceof DinoFoot<DinoEntity> foot){
+                        var footGeometry = foot.calculateActualGeometry(pTicks);
+                        Gizmos.line(
+                                footGeometry.ankle(),
+                                footGeometry.extensionEnd(),
+                                0xFFBF4DFF
+                                );
+                        Gizmos.line(
+                                footGeometry.extensionEnd(),
+                                footGeometry.footEnd(),
+                                0xFFFF731A
+                        );
                     }
 
                     Gizmos.line(geometry.upper(), geometry.knee(), 0xFF1AE6FF);

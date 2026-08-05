@@ -1,6 +1,6 @@
 package com.wachi.mse.test.dino;
 
-import com.wachi.mse.test.terrain.TerrainWatcher;
+import com.wachi.mse.test.collide.terrain.TerrainWatcher;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -111,11 +111,16 @@ public abstract class DinoEntity extends PathfinderMob {
 
     @Override
     public InteractionResult interact(Player player, InteractionHand hand, Vec3 location) {
-        setYBodyRot(45);
+        setYBodyRot(0);
         hips.getFirst().setYRot((float) Math.toRadians(0));
         hips.getFirst().getLegs().forEach(
                 leg -> leg.state = DinoLeg.DLegState.CHILL
         );
+
+        hips.getFirst().getLeftLeg().dinoFoot.actualPose
+                = new DinoFoot.DFootPose((float) Math.toRadians(-25), (float) Math.toRadians(15));
+
+
 //        hips.getFirst().getLeftLeg().upperXRot = (float) Math.toRadians(0);
 //        hips.getFirst().getLeftLeg().kneeXRot = (float) Math.toRadians(0);
         return super.interact(player, hand, location);

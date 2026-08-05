@@ -1,9 +1,8 @@
-package com.wachi.mse.test.terrain;
+package com.wachi.mse.test.collide.terrain;
 
-import com.wachi.mse.MseMod;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
-import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -14,21 +13,21 @@ import java.util.*;
 @EventBusSubscriber
 public class TerrainChangeTracker {
 
-    private static final Map<ServerLevel, Map<Long, Set<TerrainWatcher>>> cleanWatchers = new HashMap<>();
+    private static final Map<Level, Map<Long, Set<TerrainWatcher>>> cleanWatchers = new HashMap<>();
 
     @SubscribeEvent
     public static void onLevelUnloaded(LevelEvent.Unload event) {
-        if(event.getLevel() instanceof ServerLevel level)
+        if(event.getLevel() instanceof Level level)
             cleanWatchers.remove(level);
     }
 
-    public static void markChanged(ServerLevel serverLevel, long pos) {
+    public static void markChanged(Level level, long pos) {
         BlockPos blockPos = BlockPos.of(pos);
         long sectionKey = SectionPos.asLong(blockPos);
 
         AABB aabb = new AABB(blockPos);
         cleanWatchers
-                .getOrDefault(serverLevel, new HashMap<>())
+                .getOrDefault(level, new HashMap<>())
                 .getOrDefault(sectionKey, new HashSet<>())
                 .removeIf(terrainWatcher -> {
                     if(terrainWatcher.cachedArea.intersects(aabb)){
@@ -38,15 +37,15 @@ public class TerrainChangeTracker {
                 });
     }
 
-    public static void unregisterWatcher(ServerLevel serverLevel, TerrainWatcher watcher) {
-        var hashMap = cleanWatchers.getOrDefault(serverLevel, new HashMap<>());
+    public static void unregisterWatcher(Level level, TerrainWatcher watcher) {
+        var hashMap = cleanWatchers.getOrDefault(level, new HashMap<>());
         for (Long section : getAllSections(watcher)) {
             hashMap.getOrDefault(section, new HashSet<>()).remove(watcher);
         }
     }
 
-    public static void registerWatcher(ServerLevel serverLevel, TerrainWatcher watcher){
-        var hashMap = cleanWatchers.computeIfAbsent(serverLevel, k -> new HashMap<>());
+    public static void registerWatcher(Level level, TerrainWatcher watcher){
+        var hashMap = cleanWatchers.computeIfAbsent(level, k -> new HashMap<>());
         for (Long section : getAllSections(watcher)) {
             hashMap.computeIfAbsent(section, k -> new HashSet<>()).add(watcher);
         }
