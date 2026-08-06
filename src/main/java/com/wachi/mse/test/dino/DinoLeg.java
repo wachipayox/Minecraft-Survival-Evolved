@@ -1,7 +1,8 @@
 package com.wachi.mse.test.dino;
 
 import com.wachi.mse.test.collide.Capsule;
-import com.wachi.mse.test.collide.IGeometry;
+import com.wachi.mse.test.collide.Collider;
+import com.wachi.mse.test.collide.IDinoGeometry;
 import com.wachi.mse.test.collide.terrain.TerrainWatcher;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
@@ -37,14 +38,16 @@ public class DinoLeg<T extends DinoEntity> {
     public record DLegGeometry(
             Vec3 upper,
             Vec3 knee,
-            Vec3 end
-    ) implements IGeometry {
+            Vec3 end,
+            double thickness
+    ) implements IDinoGeometry {
 
         @Override
-        public List<Capsule> getCollisions(double thickness){
+        public List<Collider> getCollisions(){
+            double finalThickness = Math.max(0.0, thickness - IDinoGeometry.getCollisionEpsilon());
             return List.of(
-                new Capsule(upper(), knee(), thickness),
-                new Capsule(knee(), end(), thickness)
+                new Capsule(upper(), knee(), finalThickness),
+                new Capsule(knee(), end(), finalThickness)
             );
         }
     }
@@ -101,7 +104,7 @@ public class DinoLeg<T extends DinoEntity> {
         if(state.equals(DLegState.CHILL)){
             //should add here to check if block or motion changes to add an optimization layer
             //rn literally checks same as being in air
-            if(hit == null || hitDistanceToEnd > 0.01 || !geometry.fitsInTerrain(getWatcher(), thickness))
+            if(hit == null || hitDistanceToEnd > 0.01 || !geometry.fitsInTerrain(getWatcher()))
                 setState(DLegState.AIR);
         }
         if(state.equals(DLegState.AIR)){
@@ -114,12 +117,13 @@ public class DinoLeg<T extends DinoEntity> {
             }
         }
         if(state.equals(DLegState.LANDING)){
+            // add state justification, rn if it's landing if the target land block is removed it still goes down until its state is chill
             if(landingTarget == null) setState(DLegState.AIR);
             else {
                 double distance = landingTarget.distanceTo(geometry.upper());
                 if (
                         distance < minReach || distance > maxReach
-                        || !calculateGeometry(upperXRotTarget, kneeXRotTarget, pTicks).fitsInTerrain(getWatcher(), thickness)
+                        || !calculateGeometry(upperXRotTarget, kneeXRotTarget, pTicks).fitsInTerrain(getWatcher())
                 ) setState(DLegState.AIR);
                 else if(geometry.end().distanceTo(landingTarget) < 0.1){
                     setState(DLegState.CHILL);
@@ -290,7 +294,7 @@ public class DinoLeg<T extends DinoEntity> {
                 endOffset.z()
         );
 
-        return new DLegGeometry(upper, knee, end);
+        return new DLegGeometry(upper, knee, end, thickness);
     }
 
     public Vec3 getUpper(float partialTicks) {

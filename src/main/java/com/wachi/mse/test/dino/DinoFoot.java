@@ -1,7 +1,8 @@
 package com.wachi.mse.test.dino;
 
 import com.wachi.mse.test.collide.Capsule;
-import com.wachi.mse.test.collide.IGeometry;
+import com.wachi.mse.test.collide.Collider;
+import com.wachi.mse.test.collide.IDinoGeometry;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3f;
 
@@ -20,10 +21,10 @@ public class DinoFoot<T extends DinoEntity> {
             Vec3 ankle,
             Vec3 extensionEnd,
             Vec3 footEnd
-    ) implements IGeometry {
+    ) implements IDinoGeometry {
 
         @Override
-        public List<Capsule> getCollisions(double thickness) {
+        public List<Collider> getCollisions() {
             return List.of();
         }
     }
@@ -101,7 +102,7 @@ public class DinoFoot<T extends DinoEntity> {
         return new DFootGeometry(
                 anklePos,
                 extension,
-                foot //TODO ver si funciona
+                foot
         );
     }
 

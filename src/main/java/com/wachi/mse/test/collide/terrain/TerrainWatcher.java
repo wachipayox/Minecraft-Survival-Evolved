@@ -38,7 +38,7 @@ public class TerrainWatcher {
         if(cachedBlockCollisions == null || dirty || !isComfortable()) {
             updateMargins(level);
             cache(level);
-            MseMod.LOGGER.debug("cache");
+            //MseMod.LOGGER.debug("cache");
         }
     }
 

@@ -9,7 +9,7 @@ public record Capsule(
         Vec3 start,
         Vec3 end,
         double radius
-) {
+) implements Collider {
     public AABB bounds() {
         return new AABB(
                 Math.min(start.x, end.x) - radius,
@@ -19,6 +19,16 @@ public record Capsule(
                 Math.max(start.y, end.y) + radius,
                 Math.max(start.z, end.z) + radius
         );
+    }
+
+    @Override
+    public boolean collidesWith(AABB aabb) {
+        if(Collider.super.collidesWith(aabb)) return true;
+
+        var expanded = aabb.inflate(radius());
+        return expanded.clip(start(), end()).isPresent()
+                || expanded.contains(start())
+                || expanded.contains(end());
     }
 
     public ClipContext getBlockClipContext(Entity entity) {
